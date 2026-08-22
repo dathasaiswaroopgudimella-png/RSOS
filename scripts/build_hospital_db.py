@@ -1,6 +1,7 @@
 """
-RoadSOS — Complete National Hospital Spatial Database Builder (v5.1)
-High-precision multi-tier clinical classification and district geo-resolution.
+RoadSOS — Complete National Hospital Spatial Database Builder (v5.3)
+Precise district coordinate resolution, landmark disambiguation,
+and strict clinical tier classification.
 """
 
 import csv
@@ -27,6 +28,7 @@ DISTRICT_COORDS: Dict[str, Tuple[float, float]] = {
     "warangal": (17.9689, 79.5941),
     "warangal urban": (17.9689, 79.5941),
     "warangal rural": (17.9000, 79.6000),
+    "hanumakonda": (17.9900, 79.5600),
     "karimnagar": (18.4386, 79.1288),
     "khammam": (17.2473, 80.1514),
     "nizamabad": (18.6725, 78.0941),
@@ -50,6 +52,11 @@ DISTRICT_COORDS: Dict[str, Tuple[float, float]] = {
     "vikarabad": (17.3300, 77.9000),
     "asifabad": (19.3600, 79.2800),
     "nirmal": (19.0900, 78.3400),
+    "mulugu": (18.1900, 79.9400),
+    "narayanpet": (16.7300, 77.5000),
+    "jangaon": (17.7200, 79.1800),
+    "mahabubabad": (17.6000, 80.0000),
+    "rajanna sircilla": (18.3900, 78.8000),
 
     # Delhi NCR
     "delhi": (28.6139, 77.2090),
@@ -178,18 +185,6 @@ DISTRICT_COORDS: Dict[str, Tuple[float, float]] = {
     "sindhudurg": (16.0200, 73.6800),
     "raigad": (18.5100, 73.1800),
     "palghar": (19.6967, 72.7656),
-    "beed": (18.9900, 75.7600),
-    "osmanabad": (18.1700, 76.0400),
-    "dharashiv": (18.1700, 76.0400),
-    "jalna": (19.8400, 75.8800),
-    "hingoli": (19.7200, 77.1500),
-    "washim": (20.1000, 77.1300),
-    "yavatmal": (20.4000, 78.1300),
-    "wardha": (20.7400, 78.6000),
-    "bhandara": (21.1700, 79.6500),
-    "gondia": (21.4600, 80.2000),
-    "gadchiroli": (20.1800, 80.0000),
-    "nandurbar": (21.3700, 74.2400),
 
     # Andhra Pradesh
     "visakhapatnam": (17.6868, 83.2185),
@@ -200,20 +195,19 @@ DISTRICT_COORDS: Dict[str, Tuple[float, float]] = {
     "kakinada": (16.9891, 82.2475),
     "rajahmundry": (17.0005, 81.8040),
     "tirupati": (13.6288, 79.4192),
+    "chittoor": (13.2172, 79.1003),
     "kadapa": (14.4673, 78.8242),
-    "y.s.r.": (14.4673, 78.8242),
     "anantapur": (14.6819, 77.6006),
     "eluru": (16.7107, 81.0952),
     "ongole": (15.5057, 80.0499),
     "prakasam": (15.5057, 80.0499),
-    "chittoor": (13.2172, 79.1003),
     "srikakulam": (18.2949, 83.8938),
     "vizianagaram": (18.1067, 83.3956),
     "east godavari": (16.9891, 82.2475),
     "west godavari": (16.7107, 81.0952),
     "krishna": (16.1800, 81.1300),
 
-    # Gujarat & Rajasthan & Others
+    # Gujarat, Rajasthan, West Bengal, UP, etc.
     "ahmedabad": (23.0225, 72.5714),
     "surat": (21.1702, 72.8311),
     "vadodara": (22.3072, 73.1812),
@@ -228,6 +222,10 @@ DISTRICT_COORDS: Dict[str, Tuple[float, float]] = {
     "chandigarh": (30.7333, 76.7794),
     "guwahati": (26.1445, 91.7362),
     "bhubaneswar": (20.2961, 85.8245),
+    "hazaribag": (23.9925, 85.3637),
+    "hazaribagh": (23.9925, 85.3637),
+    "north goa": (15.4909, 73.8278),
+    "south goa": (15.2832, 73.9862),
 }
 
 PINCODE_ZONE_COORDS: Dict[str, Tuple[float, float]] = {
@@ -256,23 +254,61 @@ PINCODE_ZONE_COORDS: Dict[str, Tuple[float, float]] = {
     "83": (23.3441, 85.3096), "84": (26.1209, 85.3647), "85": (25.7771, 87.4753),
 }
 
+# Known Landmark Coordinates for Major Apex Hospitals in Hyderabad
+HYDERABAD_LANDMARKS: Dict[str, Tuple[float, float]] = {
+    "apollo hospital": (17.4325, 78.4070),
+    "apollo hospitals": (17.4325, 78.4070),
+    "care hospital, banjara": (17.4162, 78.4355),
+    "care hospital, nampally": (17.3854, 78.4741),
+    "care hospital, hitec": (17.4435, 78.3772),
+    "care hospitals": (17.4162, 78.4355),
+    "kims hospital, secunderabad": (17.4346, 78.4862),
+    "kims hospital": (17.4346, 78.4862),
+    "yashoda hospital": (17.4258, 78.4580),
+    "yashoda super speciality": (17.4258, 78.4580),
+    "nizams institute": (17.4230, 78.4530),
+    "nims": (17.4230, 78.4530),
+    "osmania general": (17.3789, 78.4770),
+    "gandhi hospital": (17.4248, 78.5034),
+    "continental hospital": (17.4184, 78.3438),
+    "medicover hospital": (17.4468, 78.3814),
+    "mediciti hospital": (17.4064, 78.4716),
+    "asian institute of gastroenterology": (17.4441, 78.3619),
+    "sunshine hospital": (17.4422, 78.4862),
+    "aster prime": (17.4362, 78.4485),
+    "citizens hospital": (17.4725, 78.3150),
+    "basavatarakam": (17.4218, 78.4325),
+    "global hospital": (17.3675, 78.4935),
+    "fernandez hospital": (17.4284, 78.4066),
+}
+
+TELANGANA_DISTRICTS = {
+    "hyderabad", "ranga reddy", "rangareddy", "medchal", "medchal malkajgiri",
+    "warangal", "warangal urban", "warangal rural", "hanumakonda", "karimnagar",
+    "khammam", "nizamabad", "nalgonda", "mahabubnagar", "sangareddy", "siddipet",
+    "adilabad", "mancherial", "peddapalli", "jagtial", "suryapet", "yadadri bhuvanagiri",
+    "bhupalpally", "kothagudem", "gadwal", "wanaparthy", "nagarkurnool", "medak",
+    "kamareddy", "vikarabad", "asifabad", "nirmal", "mulugu", "narayanpet",
+    "jangaon", "mahabubabad", "rajanna sircilla"
+}
+
 # Major Verified Apex Hospital Brands
 APEX_BRANDS = [
-    "aiims", "apollo hospital", "apollo gleneagles", "apollo health",
+    "aiims", "apollo hospital", "apollo gleneagles", "apollo health", "apollo hospitals",
     "fortis hospital", "max super", "manipal hospital", "medanta",
-    "care hospitals", "care hospital,", "kims hospital", "yashoda hospital",
+    "care hospitals", "care hospital,", "kims hospital", "yashoda hospital", "yashoda super",
     "narayana health", "narayana multispeciality", "pgimer",
     "christian medical college", "cmc vellore", "nimhans", "aster cmi",
     "aster medcity", "continental hospital", "medicover hospital",
     "ganga hospital", "sir ganga ram", "lilavati", "hinduja",
     "kokilaben", "tata memorial", "amrita hospital", "sunshine hospital",
-    "malla reddy narayana", "nims", "osmania general", "gandhi hospital",
+    "malla reddy narayana", "nims", "nizams institute", "osmania general", "gandhi hospital",
     "ruby hall", "jehangir hospital", "deenanath mangeshkar", "sakra world",
     "bgs gleneagles", "columbia asia", "sparsh hospital", "gleneagles global"
 ]
 
 CLINIC_EXCLUSIONS = [
-    "eye care", "eye hospital", "dental", "skin care", "kids care", "kid care",
+    "eye care", "eye hospital", "laser", "dental", "skin care", "kids care", "kid care",
     "child care", "children hospital", "pediatric", "fertility", "ivf",
     "ayurvedic", "homeopathic", "polyclinic", "poly clinic", "dispensary",
     "diagnostic centre", "physiotherapy", "hearing care", "hair transplant"
@@ -286,6 +322,18 @@ def clean_text(s: Optional[str]) -> str:
 
 
 def resolve_coordinates(row: dict, sr_no: int) -> Tuple[float, float]:
+    name_lower = row.get("Hospital_Name", "").strip().lower()
+    district_lower = row.get("District", "").strip().lower()
+    address_lower = row.get("Address_Original_First_Line", "").strip().lower()
+
+    # 1. Exact Hyderabad Landmark match ONLY if location is actually in Hyderabad/Telangana
+    is_in_hyd = "hyderabad" in district_lower or "ranga" in district_lower or "medchal" in district_lower or "hyderabad" in address_lower or "secunderabad" in address_lower
+    if is_in_hyd:
+        for landmark_key, (l_lat, l_lon) in HYDERABAD_LANDMARKS.items():
+            if landmark_key in name_lower:
+                return l_lat, l_lon
+
+    # 2. Check raw CSV coordinates (if valid within India and within declared district)
     raw_coord = row.get("Location_Coordinates", "").strip()
     if raw_coord and "," in raw_coord:
         try:
@@ -293,21 +341,34 @@ def resolve_coordinates(row: dict, sr_no: int) -> Tuple[float, float]:
             lat = float(parts[0].strip())
             lon = float(parts[1].strip())
             if 6.0 <= lat <= 38.0 and 68.0 <= lon <= 98.0:
-                return round(lat, 6), round(lon, 6)
+                # Validate against declared district centroid
+                matched_d = None
+                for d_name, (d_lat, d_lon) in DISTRICT_COORDS.items():
+                    if d_name == district_lower or d_name in district_lower:
+                        matched_d = (d_lat, d_lon)
+                        break
+
+                if matched_d:
+                    # Check distance to district centroid (discard if > 90km away)
+                    dlat_km = (lat - matched_d[0]) * 111.0
+                    dlon_km = (lon - matched_d[1]) * 105.0
+                    dist_to_centroid = math.sqrt(dlat_km * dlat_km + dlon_km * dlon_km)
+                    if dist_to_centroid < 90.0:
+                        return round(lat, 6), round(lon, 6)
+                else:
+                    return round(lat, 6), round(lon, 6)
         except Exception:
             pass
 
-    # Use angle+radius dispersion: gives each hospital a unique position 1-9km from centroid
+    # 3. Radius-Angle Spatial Dispersion per District Centroid
     h = int(hashlib.md5(f"{sr_no}:{row.get('Pincode', '')[:4]}:{row.get('Hospital_Name', '')[:8]}".encode()).hexdigest(), 16)
-    angle_deg = (h % 3600) / 10.0           # 0.0 to 360.0 degrees
-    # radius between 0.005 and 0.085 degrees (~0.5 to 9.5 km)
-    radius_deg = 0.005 + (h % 850) / 10000.0
+    angle_deg = (h % 3600) / 10.0
+    radius_deg = 0.005 + (h % 850) / 10000.0  # ~0.5 to 9.5 km
     offset_lat = radius_deg * math.sin(math.radians(angle_deg))
     offset_lon = radius_deg * math.cos(math.radians(angle_deg))
 
-    district = row.get("District", "").strip().lower()
     for d_name, (d_lat, d_lon) in DISTRICT_COORDS.items():
-        if d_name == district or d_name in district or district in d_name:
+        if d_name == district_lower or d_name in district_lower or district_lower in d_name:
             return round(d_lat + offset_lat, 6), round(d_lon + offset_lon, 6)
 
     pincode = row.get("Pincode", "").strip()
@@ -323,23 +384,36 @@ def resolve_coordinates(row: dict, sr_no: int) -> Tuple[float, float]:
     return round(20.5937 + offset_lat, 6), round(78.9629 + offset_lon, 6)
 
 
+def normalize_state(raw_state: str, raw_district: str, raw_address: str) -> str:
+    district_lower = raw_district.lower().strip()
+    address_lower = raw_address.lower().strip()
+    state_lower = raw_state.lower().strip()
+
+    if district_lower in TELANGANA_DISTRICTS or "hyderabad" in address_lower or "secunderabad" in address_lower or "telangana" in address_lower:
+        return "Telangana"
+
+    if "delhi" in state_lower or "new delhi" in state_lower or "delhi" in district_lower:
+        return "Delhi"
+
+    return raw_state
+
 
 def classify_hospital_tier(name: str, care_type: str, specialties: str, total_beds: int) -> str:
     name_lower = name.lower()
     spec_lower = specialties.lower()
     care_lower = care_type.lower()
 
-    # 1. Check if it's a minor clinic or single-discipline center
+    # 1. Minor Clinic exclusions (Absolute tier_3 for single-specialty clinics)
     is_excluded_clinic = any(ex in name_lower for ex in CLINIC_EXCLUSIONS)
-    if is_excluded_clinic and total_beds < 50:
+    if is_excluded_clinic:
         return "tier_3"
 
-    # 2. Check for Verified Apex Super-Specialty / Level-1 Brands
+    # 2. Apex Brands
     is_apex_brand = any(brand in name_lower for brand in APEX_BRANDS)
-    if is_apex_brand and not is_excluded_clinic:
+    if is_apex_brand:
         return "tier_1"
 
-    # 3. Check for Government Apex Institutes / Medical Colleges
+    # 3. Medical Colleges & Tertiary Centers
     if any(k in care_lower for k in ["tertiary", "super specialty", "medical college", "apex institute"]):
         if total_beds >= 100 or "trauma" in spec_lower:
             return "tier_1"
@@ -356,7 +430,7 @@ def classify_hospital_tier(name: str, care_type: str, specialties: str, total_be
 
 def build_database() -> None:
     start_time = time.time()
-    logger.info(f"🚀 [DATABASE_BUILD] Ingesting {CSV_PATH} with clinical tier verification")
+    logger.info(f"🚀 [DATABASE_BUILD] Ingesting {CSV_PATH} with clinical tier & district isolation")
 
     if not CSV_PATH.exists():
         logger.error(f"❌ [DATABASE_BUILD] CSV file not found at {CSV_PATH}")
@@ -443,10 +517,12 @@ def build_database() -> None:
             care_type = clean_text(row.get("Hospital_Care_Type"))
             discipline = clean_text(row.get("Discipline"))
             address = clean_text(row.get("Address_Original_First_Line"))
-            state = clean_text(row.get("State"))
+            raw_state = clean_text(row.get("State"))
             district = clean_text(row.get("District"))
             subdistrict = clean_text(row.get("Subdistrict"))
             pincode = clean_text(row.get("Pincode"))
+            state = normalize_state(raw_state, district, address)
+
             telephone = clean_text(row.get("Telephone"))
             mobile = clean_text(row.get("Mobile_Number"))
             emergency_num = clean_text(row.get("Emergency_Num"))
@@ -468,6 +544,11 @@ def build_database() -> None:
             total_beds = int(row.get("Total_Num_Beds", 0) or 0) if str(row.get("Total_Num_Beds", "")).isdigit() else 0
             private_wards = int(row.get("Num_Private_Wards", 0) or 0) if str(row.get("Num_Private_Wards", "")).isdigit() else 0
             beds_eco = int(row.get("Num_Bed_For_Eco_Weaker", 0) or 0) if str(row.get("Num_Bed_For_Eco_Weaker", "")).isdigit() else 0
+
+            # Boost beds for known major apex hospitals if missing in CSV
+            name_lower = name.lower()
+            if any(k in name_lower for k in ["apollo", "kims", "yashoda", "care hospital", "nims", "continental", "medicover", "fortis", "max super", "manipal"]) and total_beds == 0:
+                total_beds = 350
 
             emergency_services = clean_text(row.get("Emergency_Services"))
             tariff = clean_text(row.get("Tariff_Range"))
@@ -505,7 +586,7 @@ def build_database() -> None:
     conn.close()
 
     elapsed = time.time() - start_time
-    logger.success(f"✅ [DATABASE_BUILD] Re-indexed {len(records)} hospitals with clinical rigor in {elapsed:.2f}s")
+    logger.success(f"✅ [DATABASE_BUILD] Re-indexed {len(records)} hospitals with complete district isolation in {elapsed:.2f}s")
 
 
 if __name__ == "__main__":
