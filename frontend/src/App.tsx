@@ -26,9 +26,9 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>('AUTOMATIC');
   const [state, setState] = useState<EmergencyState>('IDLE');
   
-  // Geolocation & Address
-  const [lat, setLat] = useState<number>(17.3850);
-  const [lon, setLon] = useState<number>(78.4867);
+  // Geolocation & Address (Default: Hyderabad Jubilee Hills)
+  const [lat, setLat] = useState<number>(17.4319);
+  const [lon, setLon] = useState<number>(78.4073);
   const [addressName, setAddressName] = useState<string>('Jubilee Hills, Hyderabad, Telangana');
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [isGpsLocating, setIsGpsLocating] = useState<boolean>(false);
@@ -47,7 +47,7 @@ export default function App() {
   const [isContactsOpen, setIsContactsOpen] = useState<boolean>(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
 
-  // 1. Resolve initial location via IP and Browser GPS
+  // 1. Resolve initial location via Browser GPS / IP Geolocation
   const resolveLocation = useCallback(async () => {
     setIsGpsLocating(true);
     
@@ -66,7 +66,7 @@ export default function App() {
           setAddressName(humanName);
         },
         async (err) => {
-          console.warn('[GPS] Browser GPS denied or timed out, trying IP Geolocation:', err.message);
+          console.warn('[GPS] Browser GPS denied/timeout, attempting IP location:', err.message);
           const ipLoc = await ApiService.getIpLocation();
           if (ipLoc) {
             setLat(ipLoc.lat);
@@ -113,21 +113,26 @@ export default function App() {
     };
   }, [mode, state]);
 
-  // 3. Trigger Emergency Triage Flow
+  // 3. Trigger Emergency Triage Flow with explicit lat/lon overrides
   const executeEmergencyTriage = async (
     signals: string[],
     vehicleAvailable: boolean = true,
     telemetryData?: KineticTelemetry,
-    notes: string = ''
+    notes: string = '',
+    overrideLat?: number,
+    overrideLon?: number
   ) => {
     setIsLoading(true);
     setState('ANALYZING');
     setActiveSignals(signals);
 
+    const targetLat = overrideLat !== undefined ? overrideLat : lat;
+    const targetLon = overrideLon !== undefined ? overrideLon : lon;
+
     try {
       const response = await ApiService.requestEmergencyGuidance({
-        lat,
-        lon,
+        lat: targetLat,
+        lon: targetLon,
         signals,
         vehicleAvailable,
         telemetry: telemetryData || telemetry,
@@ -154,14 +159,17 @@ export default function App() {
       ['automatic_crash_detection', alert.type],
       true,
       alert.telemetry,
-      `Autonomous Sentinel Trigger: ${alert.type} (${alert.telemetry.g_force.toFixed(2)}G)`
+      `Autonomous Sentinel Trigger: ${alert.type} (${alert.telemetry.g_force.toFixed(2)}G)`,
+      lat,
+      lon
     );
   };
 
-  // 5. User selected manual location or clicked on map
+  // 5. User selected manual location, searched address, or clicked on map
   const handleLocationChange = async (newLat: number, newLon: number, name?: string) => {
     setLat(newLat);
     setLon(newLon);
+
     if (name) {
       setAddressName(name);
     } else {
@@ -169,9 +177,9 @@ export default function App() {
       setAddressName(human);
     }
 
-    // If currently viewing active emergency, refresh hospital rankings for the new location
+    // If currently viewing active emergency, re-rank hospitals for the new location immediately!
     if (state === 'ACTIVE') {
-      executeEmergencyTriage(activeSignals, true, telemetry);
+      executeEmergencyTriage(activeSignals, true, telemetry, '', newLat, newLon);
     }
   };
 
@@ -224,7 +232,7 @@ export default function App() {
 
             {/* Manual Triage Section */}
             <ManualSOS
-              onTriggerSOS={(signals, vehicle, notes) => executeEmergencyTriage(signals, vehicle, undefined, notes)}
+              onTriggerSOS={(signals, vehicle, notes) => executeEmergencyTriage(signals, vehicle, undefined, notes, lat, lon)}
               isLoading={isLoading}
             />
 
