@@ -1,7 +1,7 @@
 /**
- * RoadSOS Sentinel Omniscient Engine (v5.1)
- * High-frequency kinetic anomaly detection, real-time accelerometer monitoring,
- * and multi-tier crash physics simulation.
+ * RoadSOS Sentinel Omniscient Engine (v5.2)
+ * High-frequency kinetic anomaly detection, real physical accelerometer monitoring,
+ * and crash simulation studio.
  */
 
 import { KineticTelemetry, SentinelAlert } from '../types';
@@ -32,12 +32,7 @@ class SentinelEngine {
   private sensor: any = null;
   private watchId: number | null = null;
   private telemetryInterval: any = null;
-
-  // Desktop interactive mouse/touch velocity tracking
-  private lastMouseX: number = 0;
-  private lastMouseY: number = 0;
-  private lastMouseTime: number = 0;
-  private mouseVelocityG: number = 0;
+  private isMotionPermissionGranted: boolean = false;
 
   constructor() {
     this.initSensors();
@@ -58,12 +53,14 @@ class SentinelEngine {
     if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
       try {
         const state = await (DeviceMotionEvent as any).requestPermission();
-        return state === 'granted';
+        this.isMotionPermissionGranted = state === 'granted';
+        return this.isMotionPermissionGranted;
       } catch (e) {
-        console.warn('[SENTINEL] DeviceMotion permission request rejected:', e);
+        console.warn('[SENTINEL] Motion permission request error:', e);
         return false;
       }
     }
+    this.isMotionPermissionGranted = true;
     return true;
   }
 
@@ -82,13 +79,15 @@ class SentinelEngine {
     }
 
     window.addEventListener('deviceorientation', this.handleOrientation, true);
-    window.addEventListener('mousemove', this.handleMouseMove, { passive: true });
-    window.addEventListener('touchmove', this.handleTouchMove, { passive: true });
     this.startGpsTracking();
 
-    // 2. High-frequency telemetry loop (10Hz)
+    // 2. High-frequency telemetry heartbeat loop (10Hz)
     this.telemetryInterval = setInterval(() => {
-      this.tickTelemetry();
+      if (!this.active) return;
+      this.currentTelemetry.timestamp = Date.now();
+      if (this.telemetryCb) {
+        this.telemetryCb({ ...this.currentTelemetry });
+      }
     }, 100);
 
     console.log('[SENTINEL] Sentinel Omniscient Engine active.');
@@ -103,8 +102,6 @@ class SentinelEngine {
     }
     window.removeEventListener('devicemotion', this.handleDeviceMotion);
     window.removeEventListener('deviceorientation', this.handleOrientation);
-    window.removeEventListener('mousemove', this.handleMouseMove);
-    window.removeEventListener('touchmove', this.handleTouchMove);
 
     if (this.watchId !== null && 'geolocation' in navigator) {
       navigator.geolocation.clearWatch(this.watchId);
@@ -120,84 +117,10 @@ class SentinelEngine {
     this.telemetryCb = null;
   }
 
-  private tickTelemetry() {
-    if (!this.active) return;
-
-    // Decay mouse kinetic energy smoothly
-    if (this.mouseVelocityG > 0.01) {
-      this.mouseVelocityG *= 0.85;
-    } else {
-      this.mouseVelocityG = 0;
-    }
-
-    // Add subtle ambient physical micro-oscillation (0.98G to 1.02G baseline gravity)
-    const microJitter = (Math.sin(Date.now() / 400) * 0.02) + ((Math.random() - 0.5) * 0.01);
-    
-    // Only apply micro-jitter if not in simulated crash state
-    if (!this.currentTelemetry.anomaly_type || this.currentTelemetry.g_force < 3.0) {
-      const baseG = 1.00 + microJitter + this.mouseVelocityG;
-      this.currentTelemetry.g_force = Math.max(0.5, Math.round(baseG * 100) / 100);
-      this.currentTelemetry.accel_z = Math.round((9.8 + microJitter * 9.8) * 10) / 10;
-    }
-
-    this.currentTelemetry.timestamp = Date.now();
-
-    if (this.telemetryCb) {
-      this.telemetryCb({ ...this.currentTelemetry });
-    }
-  }
-
-  private handleMouseMove = (e: MouseEvent) => {
-    const now = Date.now();
-    if (this.lastMouseTime > 0) {
-      const dt = (now - this.lastMouseTime) / 1000;
-      if (dt > 0 && dt < 0.2) {
-        const dx = e.clientX - this.lastMouseX;
-        const dy = e.clientY - this.lastMouseY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const speedPxS = dist / dt;
-
-        // Kinetic coupling: fast cursor movement induces simulated lateral G-force
-        const addedG = Math.min(1.8, speedPxS / 1200);
-        if (addedG > 0.1) {
-          this.mouseVelocityG = Math.max(this.mouseVelocityG, addedG);
-          this.currentTelemetry.accel_x = Math.round((dx / dt / 100) * 10) / 10;
-          this.currentTelemetry.accel_y = Math.round((dy / dt / 100) * 10) / 10;
-        }
-      }
-    }
-    this.lastMouseX = e.clientX;
-    this.lastMouseY = e.clientY;
-    this.lastMouseTime = now;
-  };
-
-  private handleTouchMove = (e: TouchEvent) => {
-    if (e.touches.length > 0) {
-      const touch = e.touches[0];
-      const now = Date.now();
-      if (this.lastMouseTime > 0) {
-        const dt = (now - this.lastMouseTime) / 1000;
-        if (dt > 0 && dt < 0.2) {
-          const dx = touch.clientX - this.lastMouseX;
-          const dy = touch.clientY - this.lastMouseY;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const speedPxS = dist / dt;
-          const addedG = Math.min(2.2, speedPxS / 800);
-          if (addedG > 0.15) {
-            this.mouseVelocityG = Math.max(this.mouseVelocityG, addedG);
-          }
-        }
-      }
-      this.lastMouseX = touch.clientX;
-      this.lastMouseY = touch.clientY;
-      this.lastMouseTime = now;
-    }
-  };
-
   private handleLinearSensor = () => {
     if (!this.active || !this.sensor) return;
     const { x = 0, y = 0, z = 0 } = this.sensor;
-    this.processAcceleration(x, y, z);
+    this.processAcceleration(x, y, z + 9.8);
   };
 
   private handleDeviceMotion = (event: DeviceMotionEvent) => {
@@ -219,6 +142,7 @@ class SentinelEngine {
 
     this.currentTelemetry.tilt_angle_deg = Math.round(maxTilt);
 
+    // Rollover detection threshold (> 70 degrees tilt)
     if (maxTilt > 70) {
       this.triggerAlert('rollover', {
         ...this.currentTelemetry,
@@ -261,7 +185,7 @@ class SentinelEngine {
               const deltaSpeed = this.lastSpeedKmh - speedKmh;
               this.currentTelemetry.delta_speed_kmh = deltaSpeed;
 
-              // Sudden stop / Crash
+              // Sudden stop / Crash: speed dropped > 35 km/h in under 1.5 seconds
               if (this.lastSpeedKmh > 35 && speedKmh < 5 && deltaSpeed > 30) {
                 this.triggerAlert('sudden_stop', {
                   ...this.currentTelemetry,
@@ -292,6 +216,20 @@ class SentinelEngine {
         timestamp: Date.now(),
         telemetry: { ...telemetry, anomaly_type: type },
       });
+    }
+  }
+
+  // --- Manual Kinetic Force Testing (for Desktop & Testing) ---
+  public setManualGForce(g: number) {
+    this.currentTelemetry.g_force = Math.round(g * 100) / 100;
+    this.currentTelemetry.accel_x = Math.round((g * 4.5) * 10) / 10;
+    this.currentTelemetry.accel_y = Math.round((g * 5.2) * 10) / 10;
+    this.currentTelemetry.accel_z = Math.round((g * 6.8) * 10) / 10;
+    if (this.telemetryCb) {
+      this.telemetryCb({ ...this.currentTelemetry });
+    }
+    if (g >= 4.5) {
+      this.triggerAlert('impact', this.currentTelemetry);
     }
   }
 
