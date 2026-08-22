@@ -11,6 +11,10 @@ export const useHaptics = () => {
     }
   };
 
+  const triggerSosPattern = () => {
+    triggerSosVibration();
+  };
+
   const triggerHeavyImpact = () => {
     if ('vibrate' in navigator) {
       navigator.vibrate([400, 100, 300, 100, 500]);
@@ -31,6 +35,7 @@ export const useHaptics = () => {
 
   return {
     triggerSosVibration,
+    triggerSosPattern,
     triggerHeavyImpact,
     triggerLightTap,
     cancelVibration,

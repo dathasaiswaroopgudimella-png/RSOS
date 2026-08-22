@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { AlertOctagon, XCircle, Send, Volume2, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldAlert, Volume2, X, Send, Activity } from 'lucide-react';
 import { SentinelAlert } from '../types';
-import { emergencySiren } from '../services/audioSiren';
+import { audioSiren } from '../services/audioSiren';
 import { useHaptics } from '../hooks/useHaptics';
 
 interface SentinelOverlayProps {
@@ -16,30 +16,30 @@ export const SentinelOverlay: React.FC<SentinelOverlayProps> = ({
   onConfirmSos,
 }) => {
   const [countdown, setCountdown] = useState<number>(30);
-  const { triggerSosVibration, cancelVibration } = useHaptics();
+  const { triggerSosPattern } = useHaptics();
 
   useEffect(() => {
-    if (!alert) return;
+    if (!alert) {
+      setCountdown(30);
+      audioSiren.stop();
+      return;
+    }
 
-    // Reset countdown
-    setCountdown(30);
-
-    // Start Audio Siren & Vibration
-    emergencySiren.startSiren();
-    triggerSosVibration();
+    // Start siren sound and vibration
+    audioSiren.start();
+    triggerSosPattern();
 
     const interval = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
-          emergencySiren.stopSiren();
-          cancelVibration();
+          audioSiren.stop();
           onConfirmSos(alert);
           return 0;
         }
-        // Re-pulse vibration every 3 seconds
+        // Re-pulse haptics
         if (prev % 3 === 0) {
-          triggerSosVibration();
+          triggerSosPattern();
         }
         return prev - 1;
       });
@@ -47,105 +47,103 @@ export const SentinelOverlay: React.FC<SentinelOverlayProps> = ({
 
     return () => {
       clearInterval(interval);
-      emergencySiren.stopSiren();
-      cancelVibration();
+      audioSiren.stop();
     };
-  }, [alert]);
+  }, [alert, onConfirmSos, triggerSosPattern]);
 
   if (!alert) return null;
 
-  const handleCancelClick = () => {
-    emergencySiren.stopSiren();
-    cancelVibration();
-    onCancel();
-  };
-
-  const handleConfirmClick = () => {
-    emergencySiren.stopSiren();
-    cancelVibration();
-    onConfirmSos(alert);
-  };
+  const progressPercent = ((30 - countdown) / 30) * 100;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-between p-6 sm:p-10 animate-fadeIn select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-lg animate-fadeIn">
       
-      {/* Top Banner */}
-      <div className="flex items-center justify-between w-full max-w-lg pt-2">
-        <div className="flex items-center gap-2 text-primary-light font-bold text-xs uppercase tracking-wider">
-          <Volume2 className="w-4 h-4 animate-ping" />
-          <span>Auditory Siren &amp; Haptic Alert Active</span>
-        </div>
-        <span className="text-xs px-2.5 py-1 rounded-full bg-primary/20 text-primary-light border border-primary/40 font-mono font-bold">
-          CODE-RED OVERRIDE
-        </span>
-      </div>
-
-      {/* Center Countdown Sphere */}
-      <div className="flex flex-col items-center text-center my-auto space-y-6 max-w-md w-full">
+      <div className="w-full max-w-lg bg-white rounded-3xl border-2 border-emergency-500 shadow-2xl p-6 sm:p-8 text-center space-y-6 relative overflow-hidden animate-siren">
         
-        {/* Pulsing Safety Rings */}
-        <div className="relative flex items-center justify-center w-48 h-48 sm:w-56 sm:h-56">
-          <div className="absolute inset-0 rounded-full bg-primary/30 animate-pulse-ring"></div>
-          <div className="absolute inset-4 rounded-full bg-primary/20 animate-ping"></div>
+        {/* Top Emergency Pulse Badge */}
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emergency-100 text-emergency-800 text-xs font-black uppercase tracking-wider border border-emergency-300">
+          <ShieldAlert className="w-4 h-4 text-emergency-600 animate-bounce" />
+          <span>Severe Kinetic Collision Detected</span>
+        </div>
+
+        {/* Dynamic Countdown Circle */}
+        <div className="relative flex items-center justify-center w-36 h-36 sm:w-44 sm:h-44 mx-auto">
           
-          <div className="relative z-10 w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-gradient-to-br from-primary to-primary-dark flex flex-col items-center justify-center text-white shadow-glow-primary border-4 border-white/20">
-            <span className="text-5xl sm:text-6xl font-black font-mono tracking-tighter leading-none">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+            <circle
+              cx="50"
+              cy="50"
+              r="44"
+              className="stroke-slate-100"
+              strokeWidth="8"
+              fill="transparent"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r="44"
+              className="stroke-emergency-600 transition-all duration-1000"
+              strokeWidth="8"
+              fill="transparent"
+              strokeDasharray="276.46"
+              strokeDashoffset={276.46 - (276.46 * progressPercent) / 100}
+              strokeLinecap="round"
+            />
+          </svg>
+
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-4xl sm:text-5xl font-black font-mono text-slate-900 tracking-tight">
               {countdown}
             </span>
-            <span className="text-[11px] uppercase font-bold tracking-widest text-primary-fixed mt-1">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
               Seconds
             </span>
           </div>
         </div>
 
-        {/* Anomaly Heading */}
-        <div className="space-y-2">
-          <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center justify-center gap-2">
-            <AlertOctagon className="w-7 h-7 text-primary-light animate-bounce" />
-            Crash Anomaly Detected
-          </h2>
-          <p className="text-sm text-slate-300 font-medium leading-relaxed">
-            Severe kinetic deceleration or high-G impact was recorded. Emergency broadcast will transmit automatically unless cancelled.
-          </p>
-        </div>
-
-        {/* Telemetry Snapshot Pill */}
-        <div className="bg-slate-900/90 rounded-xl px-4 py-3 border border-slate-800 text-xs text-slate-300 w-full flex items-center justify-around">
-          <div>
-            <span className="text-slate-500 block text-[10px] uppercase font-bold">Anomaly Type</span>
-            <strong className="text-primary-light uppercase font-mono">{alert.type.replace('_', ' ')}</strong>
+        {/* Telemetry Summary */}
+        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
+          <div className="flex justify-between font-mono">
+            <span>Impact Force:</span>
+            <strong className="text-emergency-700">{alert.telemetry.g_force.toFixed(2)}G</strong>
           </div>
-          <div className="h-6 w-px bg-slate-800"></div>
-          <div>
-            <span className="text-slate-500 block text-[10px] uppercase font-bold">G-Force Peak</span>
-            <strong className="text-amber-400 font-mono">{alert.telemetry.g_force.toFixed(2)} G</strong>
-          </div>
-          <div className="h-6 w-px bg-slate-800"></div>
-          <div>
-            <span className="text-slate-500 block text-[10px] uppercase font-bold">Speed Delta</span>
-            <strong className="text-cyan-400 font-mono">{alert.telemetry.delta_speed_kmh.toFixed(0)} km/h</strong>
+          <div className="flex justify-between font-mono">
+            <span>Anomaly Class:</span>
+            <strong className="uppercase text-slate-900">{alert.type}</strong>
           </div>
         </div>
 
-      </div>
+        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-sm mx-auto">
+          Broadcasting GPS coordinates and clinical telemetry to receiving trauma centers and emergency contacts when timer expires.
+        </p>
 
-      {/* Bottom Dual Action Buttons (Thumb-Zone Optimized) */}
-      <div className="w-full max-w-md flex flex-col sm:flex-row gap-4 pb-2">
-        <button
-          onClick={handleCancelClick}
-          className="flex-1 py-4 px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-base flex items-center justify-center gap-2 border border-slate-700 active:scale-95 transition shadow-lg"
-        >
-          <XCircle className="w-5 h-5 text-emerald-400" />
-          <span>I AM OK (CANCEL)</span>
-        </button>
+        {/* Dual Actions: Cancel vs Confirm Immediately */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          
+          <button
+            onClick={() => {
+              audioSiren.stop();
+              onCancel();
+            }}
+            className="w-full py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-95 border border-slate-200"
+          >
+            <X className="w-4 h-4" />
+            <span>I'M OK (CANCEL)</span>
+          </button>
 
-        <button
-          onClick={handleConfirmClick}
-          className="flex-1 py-4 px-6 rounded-2xl bg-primary hover:bg-primary-container text-white font-extrabold text-base flex items-center justify-center gap-2 shadow-glow-primary active:scale-95 transition border border-primary-light"
-        >
-          <Send className="w-5 h-5" />
-          <span>BROADCAST SOS NOW</span>
-        </button>
+          <button
+            onClick={() => {
+              audioSiren.stop();
+              onConfirmSos(alert);
+            }}
+            className="w-full py-3.5 rounded-2xl bg-emergency-600 hover:bg-emergency-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-emergency-600/30"
+          >
+            <Send className="w-4 h-4" />
+            <span>DISPATCH SOS NOW</span>
+          </button>
+
+        </div>
+
       </div>
 
     </div>

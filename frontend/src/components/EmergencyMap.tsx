@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { Hospital } from '../types';
-import { Navigation, MapPin } from 'lucide-react';
 
 interface EmergencyMapProps {
   userLat: number;
@@ -9,6 +9,7 @@ interface EmergencyMapProps {
   hospitals: Hospital[];
   selectedHospital?: Hospital;
   onSelectHospital?: (hospital: Hospital) => void;
+  onMapClick?: (lat: number, lon: number) => void;
 }
 
 export const EmergencyMap: React.FC<EmergencyMapProps> = ({
@@ -17,152 +18,146 @@ export const EmergencyMap: React.FC<EmergencyMapProps> = ({
   hospitals,
   selectedHospital,
   onSelectHospital,
+  onMapClick,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const routeLayerRef = useRef<L.Polyline | null>(null);
-  const markersRef = useRef<L.Marker[]>([]);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
 
+  // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    // Initialize Map instance if not already created
     if (!mapInstanceRef.current) {
       const map = L.map(mapContainerRef.current, {
-        zoomControl: false,
-        attributionControl: false,
-      }).setView([userLat, userLon], 13);
+        center: [userLat, userLon],
+        zoom: 13,
+        scrollWheelZoom: false,
+        zoomControl: true,
+      });
 
-      // Dark Matter Map Tiles
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19,
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 18,
       }).addTo(map);
 
-      // Add Zoom Control at bottom right
-      L.control.zoom({ position: 'bottomright' }).addTo(map);
-
+      const markersGroup = L.layerGroup().addTo(map);
+      markersLayerRef.current = markersGroup;
       mapInstanceRef.current = map;
+
+      map.on('click', (e: L.LeafletMouseEvent) => {
+        if (onMapClick) {
+          onMapClick(e.latlng.lat, e.latlng.lng);
+        }
+      });
     }
 
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update View & Markers when lat, lon, or hospitals change
+  useEffect(() => {
     const map = mapInstanceRef.current;
+    const markersGroup = markersLayerRef.current;
+    if (!map || !markersGroup) return;
 
-    // Clear old markers
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-    if (routeLayerRef.current) {
-      routeLayerRef.current.remove();
-      routeLayerRef.current = null;
-    }
+    map.setView([userLat, userLon], 13);
+    markersGroup.clearLayers();
 
-    // 1. Add User Pulse Marker
+    // 1. User Incident Marker
     const userIcon = L.divIcon({
-      className: 'user-marker',
+      className: 'custom-user-marker',
       html: `
-        <div style="position:relative;display:flex;align-items:center;justify-content:center;width:32px;height:32px;">
-          <div style="position:absolute;width:100%;height:100%;border-radius:50%;background:#bc000a;opacity:0.3;animation:pulseRing 1.8s infinite;"></div>
-          <div style="width:16px;height:16px;border-radius:50%;background:#bc000a;border:3px solid #ffffff;box-shadow:0 0 10px rgba(188,0,10,0.6);"></div>
+        <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;">
+          <div style="position: absolute; width: 32px; height: 32px; border-radius: 9999px; background-color: rgba(239, 68, 68, 0.35); animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="width: 22px; height: 22px; border-radius: 9999px; background-color: #dc2626; border: 2px solid #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 8px; font-weight: 900; font-family: sans-serif;">
+            SOS
+          </div>
         </div>
       `,
       iconSize: [32, 32],
       iconAnchor: [16, 16],
     });
 
-    const userMarker = L.marker([userLat, userLon], { icon: userIcon })
-      .addTo(map)
-      .bindPopup('<b>Your Live Location</b><br/>Emergency GPS locked');
-    markersRef.current.push(userMarker);
+    L.marker([userLat, userLon], { icon: userIcon })
+      .bindPopup(`
+        <div style="font-family: system-ui, sans-serif; font-size: 12px; padding: 2px;">
+          <strong style="color: #dc2626; display: block;">🚨 Emergency Incident Site</strong>
+          <span style="color: #64748b; font-size: 11px;">${userLat.toFixed(4)}, ${userLon.toFixed(4)}</span>
+        </div>
+      `)
+      .addTo(markersGroup);
 
-    // 2. Add Hospital Markers
-    const bounds = L.latLngBounds([[userLat, userLon]]);
+    const targetHospital = selectedHospital || (hospitals.length > 0 ? hospitals[0] : null);
 
-    hospitals.forEach((h, idx) => {
-      const isTop = selectedHospital?.sr_no === h.sr_no || (!selectedHospital && idx === 0);
-      const hospitalIcon = L.divIcon({
-        className: 'hospital-marker',
+    // 2. Hospital Markers
+    hospitals.forEach((hospital, idx) => {
+      const isTop = idx === 0;
+      const isSelected = targetHospital?.sr_no === hospital.sr_no;
+
+      const bgCol = isSelected ? '#2563eb' : isTop ? '#dc2626' : '#1e293b';
+      const labelText = isTop ? '⭐ APEX' : '🏥 HOSPITAL';
+
+      const hIcon = L.divIcon({
+        className: 'custom-hosp-marker',
         html: `
-          <div style="position:relative;display:flex;align-items:center;justify-content:center;width:${isTop ? '40px' : '30px'};height:${isTop ? '40px' : '30px'};">
-            <div style="width:100%;height:100%;border-radius:12px;background:${isTop ? '#bc000a' : '#0f172a'};color:#ffffff;border:2px solid #ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.3);font-size:${isTop ? '18px' : '14px'};font-weight:bold;">
-              +
-            </div>
+          <div style="cursor: pointer; padding: 3px 8px; border-radius: 8px; background-color: ${bgCol}; color: #ffffff; font-weight: 800; font-size: 10px; font-family: sans-serif; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.25); white-space: nowrap; border: 1px solid rgba(255,255,255,0.4);">
+            ${labelText}
           </div>
         `,
-        iconSize: isTop ? [40, 40] : [30, 30],
-        iconAnchor: isTop ? [20, 20] : [15, 15],
+        iconSize: [75, 24],
+        iconAnchor: [37, 12],
       });
 
-      const marker = L.marker([h.lat, h.lon], { icon: hospitalIcon })
-        .addTo(map)
+      const m = L.marker([hospital.lat, hospital.lon], { icon: hIcon })
         .bindPopup(`
-          <div style="font-family:sans-serif;font-size:12px;">
-            <b style="color:#bc000a;">${h.hospital_name}</b><br/>
-            <span>Distance: ${h.distance_km} km</span><br/>
-            <span>Phone: ${h.primary_phone || '108'}</span>
+          <div style="font-family: system-ui, sans-serif; font-size: 12px; min-width: 180px;">
+            <strong style="color: #0f172a; display: block; font-size: 13px; font-weight: 800;">${hospital.hospital_name}</strong>
+            <p style="color: #64748b; font-size: 11px; margin: 2px 0 6px 0;">${hospital.address || `${hospital.district}, ${hospital.state}`}</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 4px;">
+              <span style="font-weight: 800; color: #2563eb;">${hospital.distance_km.toFixed(1)} km</span>
+              <a href="tel:${hospital.primary_phone || '108'}" style="color: #dc2626; font-weight: 700; text-decoration: underline;">Call Hospital</a>
+            </div>
           </div>
-        `);
+        `)
+        .addTo(markersGroup);
 
-      marker.on('click', () => {
-        if (onSelectHospital) onSelectHospital(h);
+      m.on('click', () => {
+        if (onSelectHospital) onSelectHospital(hospital);
       });
-
-      markersRef.current.push(marker);
-      bounds.extend([h.lat, h.lon]);
     });
 
-    // 3. Draw Route to Active/Top Hospital
-    const targetHospital = selectedHospital || hospitals[0];
+    // 3. Routing Polyline
     if (targetHospital) {
-      const routePolyline = L.polyline(
+      L.polyline(
         [
           [userLat, userLon],
           [targetHospital.lat, targetHospital.lon],
         ],
         {
-          color: '#bc000a',
+          color: '#2563eb',
           weight: 4,
-          opacity: 0.8,
-          dashArray: '8, 8',
+          opacity: 0.85,
+          dashArray: '6, 8',
         }
-      ).addTo(map);
-
-      routeLayerRef.current = routePolyline;
+      ).addTo(markersGroup);
     }
-
-    // Fit map bounds to view both user and hospitals
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-  }, [userLat, userLon, hospitals, selectedHospital]);
+  }, [userLat, userLon, hospitals, selectedHospital, onSelectHospital, onMapClick]);
 
   return (
-    <div className="w-full h-72 sm:h-96 rounded-2xl overflow-hidden border border-obsidian-border shadow-2xl relative">
-      <div ref={mapContainerRef} className="w-full h-full z-0" />
+    <div className="w-full h-80 sm:h-96 rounded-3xl overflow-hidden border border-slate-200 shadow-sm relative bg-slate-100">
       
-      {/* Map Overlay Badge */}
-      <div className="absolute top-3 left-3 z-10 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-800 text-xs text-slate-200 flex items-center gap-2 shadow-lg">
-        <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
-        <span className="font-semibold">Live Transit Route</span>
+      {/* Top Banner Tag */}
+      <div className="absolute top-3 left-3 z-[1000] bg-white/90 backdrop-blur-md px-3 py-1 rounded-xl border border-slate-200 text-[11px] font-bold text-slate-700 shadow-sm">
+        📍 Incident Radar • Click map to reposition
       </div>
 
-      {/* Target Hospital Mini Floating Chip */}
-      {selectedHospital && (
-        <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-xs z-10 bg-slate-950/90 backdrop-blur-md p-3 rounded-xl border border-primary/40 text-xs text-white shadow-2xl flex items-center justify-between gap-3">
-          <div>
-            <strong className="block text-primary-light font-bold line-clamp-1">
-              {selectedHospital.hospital_name}
-            </strong>
-            <span className="text-[11px] text-slate-400">
-              {selectedHospital.distance_km} km away · ~{Math.max(3, Math.round(selectedHospital.distance_km * 2.3))} mins transit
-            </span>
-          </div>
-          <a
-            href={`https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLon}&destination=${selectedHospital.lat},${selectedHospital.lon}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-2 rounded-lg bg-primary text-white hover:bg-primary-container active:scale-95 transition shrink-0"
-            title="Open Turn-by-Turn GPS"
-          >
-            <Navigation className="w-4 h-4" />
-          </a>
-        </div>
-      )}
+      <div ref={mapContainerRef} className="w-full h-full" />
     </div>
   );
 };

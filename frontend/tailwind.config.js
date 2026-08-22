@@ -1,72 +1,67 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        primary: {
-          DEFAULT: '#bc000a',
-          container: '#e2241f',
-          fixed: '#ffdad5',
-          light: '#ff3b30',
-          dark: '#930005',
-        },
-        secondary: {
-          DEFAULT: '#006591',
-          container: '#39b8fd',
-          light: '#0284c7',
-        },
+        // Clean, crisp medical-grade light aesthetic
         surface: {
-          DEFAULT: '#f9f9ff',
-          dim: '#cfdaf2',
-          bright: '#ffffff',
-          container: '#e7eeff',
-          'container-low': '#f0f3ff',
-          'container-high': '#dee8ff',
-          'container-lowest': '#ffffff',
+          50: '#F8FAFC',
+          100: '#F1F5F9',
+          200: '#E2E8F0',
+          300: '#CBD5E1',
+          card: '#FFFFFF',
+          border: '#E2E8F0',
+          hover: '#F8FAFC'
         },
-        'on-surface': '#111c2d',
-        'on-surface-variant': '#5d3f3b',
-        'obsidian-bg': '#080c14',
-        'obsidian-surface': '#0e1524',
-        'obsidian-card': 'rgba(17, 24, 39, 0.75)',
-        'obsidian-border': 'rgba(255, 255, 255, 0.08)',
+        emergency: {
+          50: '#FEF2F2',
+          100: '#FEE2E2',
+          500: '#EF4444',
+          600: '#DC2626',
+          700: '#B91C1C',
+        },
+        brand: {
+          50: '#EFF6FF',
+          100: '#DBEAFE',
+          500: '#3B82F6',
+          600: '#2563EB',
+          700: '#1D4ED8',
+        },
+        medical: {
+          teal: '#0D9488',
+          cyan: '#06B6D4',
+          emerald: '#10B981',
+          amber: '#F59E0B',
+          purple: '#8B5CF6'
+        }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       boxShadow: {
-        'neumorphic': '5px 5px 12px rgba(30, 41, 59, 0.06), -5px -5px 12px #FFFFFF',
-        'neumorphic-pressed': 'inset 3px 3px 6px rgba(30, 41, 59, 0.08), inset -3px -3px 6px #FFFFFF',
-        'neumorphic-dark': '5px 5px 15px rgba(0, 0, 0, 0.4), -3px -3px 10px rgba(255, 255, 255, 0.03)',
-        'glow-primary': '0 0 25px rgba(188, 0, 10, 0.45)',
-        'glow-emerald': '0 0 20px rgba(16, 185, 129, 0.4)',
-        'glow-cyan': '0 0 20px rgba(6, 182, 212, 0.4)',
+        'clean': '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
+        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
+        'card-hover': '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04)',
+        'emergency': '0 10px 25px -5px rgba(220, 38, 38, 0.25)',
+        'pulse-red': '0 0 0 8px rgba(239, 68, 68, 0.2)',
       },
       animation: {
-        'pulse-ring': 'pulseRing 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite',
-        'pulse-sos': 'pulseSos 1.8s infinite',
-        'radar-sweep': 'radarSweep 3s linear infinite',
+        'pulse-subtle': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'siren': 'sirenPulse 1.2s ease-in-out infinite',
       },
       keyframes: {
-        pulseRing: {
-          '0%': { transform: 'scale(0.9)', opacity: '0.8' },
-          '100%': { transform: 'scale(2.2)', opacity: '0' },
-        },
-        pulseSos: {
-          '0%, 100%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(188, 0, 10, 0.5)' },
-          '50%': { transform: 'scale(1.03)', boxShadow: '0 0 0 22px rgba(188, 0, 10, 0)' },
-        },
-        radarSweep: {
-          '0%': { transform: 'rotate(0deg)' },
-          '100%': { transform: 'rotate(360deg)' },
-        },
-      },
+        sirenPulse: {
+          '0%, 100%': { transform: 'scale(1)', opacity: '1' },
+          '50%': { transform: 'scale(1.04)', opacity: '0.85' },
+        }
+      }
     },
   },
   plugins: [],
-};
+}

@@ -205,12 +205,27 @@ async def search_hospitals(req: SearchRequest):
 
 
 # ──────────────────────────────────────────────
-# POST /api/geocode
+# POST /api/geocode & GET /api/reverse-geocode & GET /api/geocode/ip
 # ──────────────────────────────────────────────
 @app.post("/api/geocode", response_model=GeocodeResponse)
 async def geocode_address(req: GeocodeRequest):
     """Multi-provider geocoding for addresses, landmarks, and pincodes."""
     return await geocode(req.address)
+
+
+@app.get("/api/reverse-geocode")
+async def get_reverse_geocode(lat: float, lon: float):
+    """Translates GPS lat/lon into human-readable city, locality, and state."""
+    from backend.geocode import reverse_geocode
+    display_name = await reverse_geocode(lat, lon)
+    return {"status": "ok", "lat": lat, "lon": lon, "display_name": display_name}
+
+
+@app.get("/api/geocode/ip", response_model=GeocodeResponse)
+async def get_ip_location():
+    """Auto-detects approximate user location via IP address."""
+    from backend.geocode import geocode_ip_fallback
+    return await geocode_ip_fallback()
 
 
 # ──────────────────────────────────────────────

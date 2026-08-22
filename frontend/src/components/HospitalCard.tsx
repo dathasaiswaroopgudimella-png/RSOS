@@ -1,7 +1,7 @@
 import React from 'react';
 import {
-  Phone, Navigation, CheckCircle, Shield, Award, Heart,
-  Share2, AlertCircle, Building2, Bed, Activity
+  Building2, Phone, Navigation, Award,
+  Shield, Check, MapPin, Bed, Activity
 } from 'lucide-react';
 import { Hospital } from '../types';
 
@@ -9,8 +9,8 @@ interface HospitalCardProps {
   hospital: Hospital;
   isTopChoice?: boolean;
   onSelect?: () => void;
-  userLat?: number;
-  userLon?: number;
+  userLat: number;
+  userLon: number;
 }
 
 export const HospitalCard: React.FC<HospitalCardProps> = ({
@@ -20,143 +20,133 @@ export const HospitalCard: React.FC<HospitalCardProps> = ({
   userLat,
   userLon,
 }) => {
-  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userLat || ''},${userLon || ''}&destination=${hospital.lat},${hospital.lon}&travelmode=driving`;
-  const primaryPhone = hospital.primary_phone || hospital.emergency_num || hospital.ambulance_phone || '108';
+  const phoneToCall = hospital.primary_phone || hospital.emergency_num || hospital.ambulance_phone || '108';
+  const cleanPhone = phoneToCall.replace(/[^\d+]/g, '');
 
-  const handleShare = () => {
-    const text = `🚨 Emergency Patient routed to ${hospital.hospital_name} (${hospital.distance_km} km away). Phone: ${primaryPhone}. Route: ${googleMapsUrl}`;
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
-  };
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLon}&destination=${hospital.lat},${hospital.lon}&travelmode=driving`;
+
+  const score = hospital.suitability_score || 85.0;
 
   return (
     <div
       onClick={onSelect}
-      className={`rounded-2xl border transition-all p-5 relative overflow-hidden ${
+      className={`group relative p-5 rounded-2xl bg-white border transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md ${
         isTopChoice
-          ? 'bg-gradient-to-b from-slate-900 via-obsidian-surface to-obsidian-surface border-primary/50 shadow-glow-primary'
-          : 'bg-obsidian-surface border-obsidian-border hover:border-slate-700 shadow-xl'
+          ? 'border-brand-300 ring-2 ring-brand-400/30'
+          : 'border-slate-200 hover:border-slate-300'
       }`}
     >
-      {/* Top Banner Tag */}
+      
+      {/* Top Choice Floating Ribbon */}
       {isTopChoice && (
-        <div className="absolute top-0 right-0 bg-primary text-white text-[10px] font-extrabold uppercase px-3 py-1 rounded-bl-xl tracking-wider shadow-md flex items-center gap-1">
-          <Award className="w-3 h-3" />
-          <span>Top Clinical Recommendation</span>
+        <div className="absolute -top-3 left-6 inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-gradient-to-r from-brand-600 to-brand-700 text-white text-[10px] font-black uppercase tracking-wider shadow-sm">
+          <Award className="w-3 h-3 text-amber-300" />
+          <span>Top Clinical Choice</span>
         </div>
       )}
 
-      {/* Hospital Identity & Header */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-start gap-3">
-          <div
-            className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${
-              isTopChoice
-                ? 'bg-primary/20 text-primary-light border border-primary/40'
-                : 'bg-slate-800 text-cyan-400 border border-slate-700'
-            }`}
-          >
-            <Building2 className="w-6 h-6" />
-          </div>
-          <div>
-            <h4 className="text-base font-extrabold text-white leading-snug">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+        
+        {/* Left Hospital Info */}
+        <div className="space-y-2 min-w-0">
+          
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-brand-600 transition">
               {hospital.hospital_name}
             </h4>
-            <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
-              {hospital.address || `${hospital.district}, ${hospital.state}`}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Suitability Score & Metrics Row */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {/* Suitability Score Badge */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold font-mono">
-          <Activity className="w-3.5 h-3.5 text-emerald-400" />
-          <span>{hospital.suitability_score.toFixed(0)}% Clinical Match</span>
-        </div>
-
-        {/* Distance & Time Badge */}
-        <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-800 text-slate-200 border border-slate-700 text-xs font-semibold">
-          <Navigation className="w-3 h-3 text-cyan-400" />
-          <span>{hospital.distance_km.toFixed(1)} km</span>
-          <span className="text-slate-400">· ~{Math.max(3, Math.round(hospital.distance_km * 2.3))} mins</span>
-        </div>
-
-        {/* Beds Badge */}
-        {hospital.total_beds && hospital.total_beds > 0 ? (
-          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-xs">
-            <Bed className="w-3 h-3 text-purple-400" />
-            <span>{hospital.total_beds} Beds</span>
-          </div>
-        ) : null}
-
-        {/* Tier / Care Type */}
-        {hospital.hospital_care_type && (
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-            {hospital.hospital_care_type}
-          </span>
-        )}
-      </div>
-
-      {/* Clinical Match Reasons */}
-      {hospital.match_reasons && hospital.match_reasons.length > 0 && (
-        <div className="bg-slate-900/80 rounded-xl p-3 border border-slate-800/80 mb-4 space-y-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-            Why this facility was selected:
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {hospital.match_reasons.map((reason, idx) => (
-              <span
-                key={idx}
-                className="inline-flex items-center gap-1 text-xs text-slate-200 bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/60"
-              >
-                <CheckCircle className="w-3 h-3 text-emerald-400" />
-                {reason}
+            
+            {hospital.tier === 'tier_1' && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200">
+                Apex Tier-1
               </span>
-            ))}
+            )}
           </div>
-        </div>
-      )}
 
-      {/* Specialties & Facilities Snippet */}
-      {hospital.specialties && (
-        <div className="text-xs text-slate-400 mb-4 line-clamp-2">
-          <strong className="text-slate-300">Key Specialties:</strong> {hospital.specialties}
-        </div>
-      )}
+          <p className="text-xs text-slate-500 flex items-center gap-1.5">
+            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="truncate">
+              {hospital.address || `${hospital.district}, ${hospital.state}`}
+            </span>
+          </p>
 
-      {/* Action Buttons */}
-      <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
-        {/* Call Hospital */}
+          {/* Specialties & Facilities Pill Badges */}
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {hospital.total_beds && hospital.total_beds > 0 ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700">
+                <Bed className="w-3 h-3 text-slate-500" />
+                {hospital.total_beds} Beds
+              </span>
+            ) : null}
+
+            {hospital.specialties && hospital.specialties.toLowerCase().includes('trauma') && (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200">
+                Trauma Center
+              </span>
+            )}
+
+            {hospital.facilities && hospital.facilities.toLowerCase().includes('icu') && (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                Critical ICU
+              </span>
+            )}
+
+            {hospital.facilities && hospital.facilities.toLowerCase().includes('blood') && (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                Blood Bank
+              </span>
+            )}
+          </div>
+
+        </div>
+
+        {/* Right Distance & Score Badge */}
+        <div className="flex sm:flex-col items-center sm:items-end justify-between shrink-0 gap-2">
+          
+          {/* Suitability Score */}
+          <div className="flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
+            <span className="text-[10px] font-bold text-emerald-700 uppercase">Match</span>
+            <span className="text-xs sm:text-sm font-black text-emerald-800 font-mono">
+              {score > 100 ? 99 : Math.round(score)}%
+            </span>
+          </div>
+
+          {/* Distance */}
+          <div className="text-right">
+            <span className="text-sm sm:text-base font-black text-slate-900 font-mono">
+              {hospital.distance_km.toFixed(1)} km
+            </span>
+            <span className="text-[10px] text-slate-400 block font-medium">
+              ~{Math.max(3, Math.round(hospital.distance_km * 2.5))} mins drive
+            </span>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* Action Buttons: Dial & Navigate */}
+      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+        
         <a
-          href={`tel:${primaryPhone}`}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold shadow-glow-primary active:scale-95 transition"
+          href={`tel:${cleanPhone}`}
+          onClick={(e) => e.stopPropagation()}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emergency-600 hover:bg-emergency-700 text-white text-xs font-bold transition active:scale-95 shadow-sm"
         >
-          <Phone className="w-4 h-4" />
-          <span>Call ({primaryPhone})</span>
+          <Phone className="w-3.5 h-3.5" />
+          <span>Call Hospital ({phoneToCall})</span>
         </a>
 
-        {/* Start GPS Navigation */}
         <a
-          href={googleMapsUrl}
+          href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold border border-slate-700 active:scale-95 transition"
+          onClick={(e) => e.stopPropagation()}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition active:scale-95 border border-slate-200"
         >
-          <Navigation className="w-4 h-4 text-cyan-400" />
-          <span>Start GPS Nav</span>
+          <Navigation className="w-3.5 h-3.5 text-brand-600" />
+          <span>Start Navigation</span>
         </a>
 
-        {/* WhatsApp Share Button */}
-        <button
-          onClick={handleShare}
-          className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 active:scale-95 transition"
-          title="Share route via WhatsApp"
-        >
-          <Share2 className="w-4 h-4" />
-        </button>
       </div>
 
     </div>

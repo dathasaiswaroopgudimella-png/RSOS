@@ -1,10 +1,13 @@
 import React from 'react';
-import { Shield, Activity, Radio, Phone, User, Settings, AlertTriangle, Satellite } from 'lucide-react';
+import {
+  ShieldAlert, Radio, Activity, PhoneCall,
+  UserCheck, Server, AlertCircle, Sparkles, Navigation
+} from 'lucide-react';
 import { AppMode } from '../types';
 
 interface HeaderProps {
   mode: AppMode;
-  onToggleMode: (newMode: AppMode) => void;
+  onToggleMode: (mode: AppMode) => void;
   gpsAccuracy: number | null;
   sensorActive: boolean;
   onOpenContacts: () => void;
@@ -20,120 +23,93 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDiagnostics,
 }) => {
   return (
-    <header className="sticky top-0 z-30 w-full bg-obsidian-surface/90 backdrop-blur-xl border-b border-obsidian-border shadow-lg px-4 md:px-8 py-3">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
-        
-        {/* Brand & System Title */}
-        <div className="flex items-center justify-between w-full md:w-auto">
-          <div className="flex items-center gap-3">
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-primary text-white shadow-glow-primary">
-              <Shield className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-              </span>
+    <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 sm:h-20 gap-2 sm:gap-4">
+          
+          {/* Brand Logo & Tagline */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-emergency-500 to-emergency-600 flex items-center justify-center text-white shadow-md shadow-emergency-500/20">
+              <ShieldAlert className="w-6 h-6 animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-extrabold tracking-tight text-white flex items-center gap-1.5">
-                  Road<span className="text-primary-light">SOS</span>
-                </h1>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-primary/20 text-primary-light border border-primary/30">
-                  v5.0 Enterprise
+                <span className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
+                  Road<span className="text-emergency-600">SOS</span>
+                </span>
+                <span className="hidden sm:inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emergency-50 text-emergency-700 border border-emergency-200">
+                  National Triage
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-medium hidden sm:block">
-                Autonomous & Clinical Emergency Decision Intelligence
+              <p className="text-[11px] text-slate-500 font-medium hidden md:block">
+                Autonomous Crash Sensing &amp; Clinical Decision Intelligence
               </p>
             </div>
           </div>
 
-          {/* Mobile Right Controls */}
-          <div className="flex items-center gap-2 md:hidden">
+          {/* Center Mode Switcher: Autonomous Sentinel vs Manual SOS */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
+            <button
+              onClick={() => onToggleMode('AUTOMATIC')}
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
+                mode === 'AUTOMATIC'
+                  ? 'bg-white text-emerald-700 shadow-sm border border-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <div className={`w-2 h-2 rounded-full ${mode === 'AUTOMATIC' ? 'bg-emerald-500 animate-ping' : 'bg-slate-400'}`} />
+              <Radio className="w-3.5 h-3.5" />
+              <span>Sentinel Auto</span>
+            </button>
+
+            <button
+              onClick={() => onToggleMode('MANUAL')}
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
+                mode === 'MANUAL'
+                  ? 'bg-white text-emergency-600 shadow-sm border border-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Manual SOS</span>
+            </button>
+          </div>
+
+          {/* Right Action Icons: Quick 108 dialer, Medical ID, Diagnostics */}
+          <div className="flex items-center gap-2">
+            
+            {/* Quick 108 Ambulance Call */}
+            <a
+              href="tel:108"
+              className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emergency-50 hover:bg-emergency-100 text-emergency-700 border border-emergency-200 text-xs font-bold transition active:scale-95"
+            >
+              <PhoneCall className="w-3.5 h-3.5 text-emergency-600 animate-bounce" />
+              <span>Dial 108</span>
+            </a>
+
+            {/* Medical ID Vault */}
             <button
               onClick={onOpenContacts}
-              className="p-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-95 transition"
               title="Medical ID & ICE Contacts"
+              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition active:scale-95"
             >
-              <User className="w-4 h-4" />
+              <UserCheck className="w-4 h-4 text-brand-600" />
+              <span className="hidden sm:inline">Medical ID</span>
             </button>
+
+            {/* System Diagnostics */}
             <button
               onClick={onOpenDiagnostics}
-              className="p-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-95 transition"
-              title="System Diagnostics"
+              title="API & Spatial Index Diagnostics"
+              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition active:scale-95"
             >
-              <Settings className="w-4 h-4" />
+              <Server className="w-4 h-4 text-slate-600" />
+              <span className="hidden md:inline">Status</span>
             </button>
-          </div>
-        </div>
 
-        {/* Center: Mode Switcher */}
-        <div className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 shadow-inner w-full md:w-auto justify-center">
-          <button
-            onClick={() => onToggleMode('AUTOMATIC')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              mode === 'AUTOMATIC'
-                ? 'bg-primary text-white shadow-glow-primary scale-[1.02]'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Radio className={`w-3.5 h-3.5 ${mode === 'AUTOMATIC' ? 'animate-pulse' : ''}`} />
-            <span>Sentinel Auto Mode</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping ml-0.5"></span>
-          </button>
-          <button
-            onClick={() => onToggleMode('MANUAL')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              mode === 'MANUAL'
-                ? 'bg-primary text-white shadow-glow-primary scale-[1.02]'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>Manual Triage</span>
-          </button>
-        </div>
-
-        {/* Right: Telemetry Badges & Quick Action Dialers */}
-        <div className="hidden md:flex items-center gap-4">
-          
-          {/* GPS HUD */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-300">
-            <Satellite className="w-3.5 h-3.5 text-cyan-400" />
-            <span>GPS:</span>
-            <span className="font-semibold text-emerald-400">
-              {gpsAccuracy !== null ? `±${gpsAccuracy.toFixed(0)}m` : 'Locked'}
-            </span>
           </div>
 
-          {/* Quick Call 108 */}
-          <a
-            href="tel:108"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/30 text-xs font-bold transition active:scale-95 shadow-sm"
-          >
-            <Phone className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Call 108</span>
-          </a>
-
-          {/* Medical Profile Modal Trigger */}
-          <button
-            onClick={onOpenContacts}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-95 text-xs font-semibold transition border border-slate-700"
-          >
-            <User className="w-3.5 h-3.5 text-slate-300" />
-            <span>Medical ID</span>
-          </button>
-
-          {/* Diagnostics Button */}
-          <button
-            onClick={onOpenDiagnostics}
-            className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 active:scale-95 transition border border-slate-700"
-            title="System Diagnostics & Database Inspector"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
         </div>
-
       </div>
     </header>
   );

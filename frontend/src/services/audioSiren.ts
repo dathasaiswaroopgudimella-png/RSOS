@@ -5,7 +5,6 @@
 
 class EmergencyAudioSiren {
   private ctx: AudioContext | null = null;
-  private osc1: OscillatorNode | null = null;
   private gainNode: GainNode | null = null;
   private intervalId: any = null;
   private isPlaying: boolean = false;
@@ -20,6 +19,14 @@ class EmergencyAudioSiren {
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
+  }
+
+  public start() {
+    this.startSiren();
+  }
+
+  public stop() {
+    this.stopSiren();
   }
 
   public startSiren() {
@@ -67,3 +74,4 @@ class EmergencyAudioSiren {
 }
 
 export const emergencySiren = new EmergencyAudioSiren();
+export const audioSiren = emergencySiren;

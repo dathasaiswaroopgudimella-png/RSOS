@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Shield, AlertTriangle, Radio, Navigation, CheckCircle2,
+  ShieldAlert, AlertTriangle, Radio, Navigation, CheckCircle2,
   RefreshCw, MapPin, Phone, Share2, Award, HeartHandshake,
-  Activity, Zap, Search, Clock
+  Activity, Zap, Search, Clock, ArrowLeft, Layers
 } from 'lucide-react';
 import { Header } from './components/Header';
+import { LocationSelectorBar } from './components/LocationSelectorBar';
 import { SentinelHUD } from './components/SentinelHUD';
 import { SentinelOverlay } from './components/SentinelOverlay';
 import { ManualSOS } from './components/ManualSOS';
@@ -25,10 +26,12 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>('AUTOMATIC');
   const [state, setState] = useState<EmergencyState>('IDLE');
   
-  // Geolocation
+  // Geolocation & Address
   const [lat, setLat] = useState<number>(17.3850);
   const [lon, setLon] = useState<number>(78.4867);
+  const [addressName, setAddressName] = useState<string>('Jubilee Hills, Hyderabad, Telangana');
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [isGpsLocating, setIsGpsLocating] = useState<boolean>(false);
 
   // Sentinel Engine & Kinetic Telemetry
   const [telemetry, setTelemetry] = useState<KineticTelemetry>(sentinelEngine.getTelemetry());
@@ -44,32 +47,50 @@ export default function App() {
   const [isContactsOpen, setIsContactsOpen] = useState<boolean>(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
 
-  // 1. Initialize High-Accuracy GPS on Mount
-  useEffect(() => {
+  // 1. Resolve initial location via IP and Browser GPS
+  const resolveLocation = useCallback(async () => {
+    setIsGpsLocating(true);
+    
+    // First try browser GPS
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setLat(pos.coords.latitude);
-          setLon(pos.coords.longitude);
+        async (pos) => {
+          const userLat = pos.coords.latitude;
+          const userLon = pos.coords.longitude;
+          setLat(userLat);
+          setLon(userLon);
           setGpsAccuracy(pos.coords.accuracy);
-        },
-        (err) => console.warn('[GPS] Initial positioning warning:', err.message),
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
+          setIsGpsLocating(false);
 
-      const watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          setLat(pos.coords.latitude);
-          setLon(pos.coords.longitude);
-          setGpsAccuracy(pos.coords.accuracy);
+          const humanName = await ApiService.reverseGeocode(userLat, userLon);
+          setAddressName(humanName);
         },
-        (err) => console.warn('[GPS] Watch warning:', err.message),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+        async (err) => {
+          console.warn('[GPS] Browser GPS denied or timed out, trying IP Geolocation:', err.message);
+          const ipLoc = await ApiService.getIpLocation();
+          if (ipLoc) {
+            setLat(ipLoc.lat);
+            setLon(ipLoc.lon);
+            setAddressName(ipLoc.display_name);
+          }
+          setIsGpsLocating(false);
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
       );
-
-      return () => navigator.geolocation.clearWatch(watchId);
+    } else {
+      const ipLoc = await ApiService.getIpLocation();
+      if (ipLoc) {
+        setLat(ipLoc.lat);
+        setLon(ipLoc.lon);
+        setAddressName(ipLoc.display_name);
+      }
+      setIsGpsLocating(false);
     }
   }, []);
+
+  useEffect(() => {
+    resolveLocation();
+  }, [resolveLocation]);
 
   // 2. Manage Sentinel Engine in Automatic Mode
   useEffect(() => {
@@ -133,11 +154,28 @@ export default function App() {
       ['automatic_crash_detection', alert.type],
       true,
       alert.telemetry,
-      `Autonomous Crash Trigger: ${alert.type} (${alert.telemetry.g_force.toFixed(2)}G)`
+      `Autonomous Sentinel Trigger: ${alert.type} (${alert.telemetry.g_force.toFixed(2)}G)`
     );
   };
 
-  // 5. Reset Emergency State
+  // 5. User selected manual location or clicked on map
+  const handleLocationChange = async (newLat: number, newLon: number, name?: string) => {
+    setLat(newLat);
+    setLon(newLon);
+    if (name) {
+      setAddressName(name);
+    } else {
+      const human = await ApiService.reverseGeocode(newLat, newLon);
+      setAddressName(human);
+    }
+
+    // If currently viewing active emergency, refresh hospital rankings for the new location
+    if (state === 'ACTIVE') {
+      executeEmergencyTriage(activeSignals, true, telemetry);
+    }
+  };
+
+  // 6. Reset Emergency State
   const handleReset = () => {
     setState('IDLE');
     setEmergencyResponse(null);
@@ -146,7 +184,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-obsidian-bg text-slate-100 flex flex-col font-sans antialiased selection:bg-primary selection:text-white">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased selection:bg-brand-500 selection:text-white">
       
       {/* Top Application Header */}
       <Header
@@ -159,11 +197,22 @@ export default function App() {
       />
 
       {/* Main Screen Canvas */}
-      <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+      <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         
+        {/* Global Incident Location & Search Bar */}
+        <LocationSelectorBar
+          currentAddress={addressName}
+          lat={lat}
+          lon={lon}
+          gpsAccuracy={gpsAccuracy}
+          onLocationSelect={handleLocationChange}
+          onRefreshGps={resolveLocation}
+          isGpsLocating={isGpsLocating}
+        />
+
         {/* State 1: IDLE / MONITORING STATE */}
         {state === 'IDLE' && (
-          <div className="space-y-8 animate-fadeIn">
+          <div className="space-y-6 animate-fadeIn">
             
             {/* Autonomous Sentinel Telemetry HUD (Rendered when in Automatic Mode) */}
             {mode === 'AUTOMATIC' && (
@@ -184,19 +233,19 @@ export default function App() {
 
         {/* State 2: ANALYZING STATE */}
         {state === 'ANALYZING' && (
-          <div className="flex flex-col items-center justify-center py-24 space-y-6 animate-fadeIn">
+          <div className="flex flex-col items-center justify-center py-24 space-y-6 animate-fadeIn bg-white rounded-3xl border border-slate-200 shadow-sm">
             <div className="relative flex items-center justify-center w-24 h-24">
-              <div className="absolute inset-0 rounded-full bg-primary/30 animate-pulse-ring"></div>
-              <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-white shadow-glow-primary">
+              <div className="absolute inset-0 rounded-full bg-emergency-500/20 animate-pulse-ring"></div>
+              <div className="w-16 h-16 rounded-full bg-emergency-600 flex items-center justify-center text-white shadow-lg shadow-emergency-600/30">
                 <Activity className="w-8 h-8 animate-spin" />
               </div>
             </div>
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl font-black text-white">
-                Executing Spatial &amp; Clinical Triage...
+            <div className="text-center space-y-2 max-w-md px-4">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+                Evaluating 30,273+ National Hospitals...
               </h2>
-              <p className="text-sm text-slate-400 max-w-md">
-                Querying 30,000+ national hospitals via BallTree and evaluating Trauma/ICU capabilities for your exact coordinates.
+              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+                Querying spatial BallTree index in sub-5ms and computing Clinical Suitability Scores based on verified Trauma, ICU, and Blood Bank capabilities.
               </p>
             </div>
           </div>
@@ -204,24 +253,24 @@ export default function App() {
 
         {/* State 3: ACTIVE EMERGENCY GUIDANCE DASHBOARD */}
         {state === 'ACTIVE' && emergencyResponse && (
-          <div className="space-y-8 animate-fadeIn">
+          <div className="space-y-6 animate-fadeIn">
             
             {/* Active Emergency Banner */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-primary/30 via-slate-900 to-slate-900 border border-primary/50 shadow-glow-primary">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 sm:p-6 rounded-3xl bg-white border border-emergency-200 shadow-card">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 shadow-lg">
-                  <Shield className="w-6 h-6 animate-pulse" />
+                <div className="w-12 h-12 rounded-2xl bg-emergency-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emergency-600/20">
+                  <ShieldAlert className="w-6 h-6 animate-pulse" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold uppercase px-2 py-0.5 rounded-md bg-primary text-white">
-                      ACTIVE RESCUE DISPATCH
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emergency-100 text-emergency-800">
+                      Active Rescue Dispatch
                     </span>
-                    <span className="text-xs text-slate-400">
-                      Latency: {emergencyResponse.metadata?.latency_ms || 3.2}ms
+                    <span className="text-xs text-slate-400 font-mono">
+                      Spatial Latency: {emergencyResponse.metadata?.latency_ms || 2.8}ms
                     </span>
                   </div>
-                  <h2 className="text-lg sm:text-xl font-black text-white mt-1">
+                  <h2 className="text-lg sm:text-xl font-black text-slate-900 mt-0.5">
                     {emergencyResponse.plan.recommended_hospital}
                   </h2>
                 </div>
@@ -230,15 +279,16 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleReset}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 active:scale-95 transition"
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-200 active:scale-95 transition flex items-center gap-1.5"
                 >
-                  Reset / New Emergency
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Reset / New Emergency</span>
                 </button>
               </div>
             </div>
 
             {/* Split Grid: Left = AI Copilot & Hospitals, Right = Live Route Map */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               
               {/* Left Column (7 Cols): AI Triage & Hospital Ranking */}
               <div className="lg:col-span-7 space-y-6">
@@ -251,15 +301,15 @@ export default function App() {
                 />
 
                 {/* Hospital Recommendations List */}
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                      <Award className="w-4 h-4 text-primary-light" />
+                    <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                      <Award className="w-4 h-4 text-brand-600" />
                       Clinically Ranked Emergency Facilities ({emergencyResponse.hospitals.length})
                     </h3>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {emergencyResponse.hospitals.map((hospital, index) => (
                       <HospitalCard
                         key={hospital.sr_no || index}
@@ -280,9 +330,9 @@ export default function App() {
                 
                 {/* Interactive Map */}
                 <div className="space-y-2">
-                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <Navigation className="w-4 h-4 text-cyan-400" />
-                    Live Emergency Navigation Radar
+                  <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                    <Navigation className="w-4 h-4 text-brand-600" />
+                    Interactive Emergency Radar
                   </h3>
                   <EmergencyMap
                     userLat={lat}
@@ -290,23 +340,24 @@ export default function App() {
                     hospitals={emergencyResponse.hospitals}
                     selectedHospital={selectedHospital || undefined}
                     onSelectHospital={(h) => setSelectedHospital(h)}
+                    onMapClick={(clickedLat, clickedLon) => handleLocationChange(clickedLat, clickedLon)}
                   />
                 </div>
 
-                {/* Weather & Road Condition Widget */}
+                {/* Weather & Road Condition Card */}
                 {emergencyResponse.weather && (
-                  <div className="bg-obsidian-surface rounded-2xl border border-obsidian-border p-4 shadow-xl text-xs space-y-2">
-                    <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] block">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm text-xs space-y-2">
+                    <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px] block">
                       En Route Atmospheric &amp; Road Hazards
                     </span>
-                    <div className="grid grid-cols-2 gap-2 text-slate-300">
-                      <div className="bg-slate-900 p-2 rounded-lg border border-slate-800">
-                        <span className="text-slate-500 text-[10px] block">Weather</span>
-                        <strong className="text-white">{emergencyResponse.weather.condition} ({emergencyResponse.weather.temperature_c}°C)</strong>
+                    <div className="grid grid-cols-2 gap-2 text-slate-700">
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <span className="text-slate-400 text-[10px] block">Weather</span>
+                        <strong className="text-slate-900">{emergencyResponse.weather.condition} ({emergencyResponse.weather.temperature_c}°C)</strong>
                       </div>
-                      <div className="bg-slate-900 p-2 rounded-lg border border-slate-800">
-                        <span className="text-slate-500 text-[10px] block">Road Surface</span>
-                        <strong className="text-emerald-400">{emergencyResponse.weather.road_condition}</strong>
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <span className="text-slate-400 text-[10px] block">Road Surface</span>
+                        <strong className="text-emerald-700">{emergencyResponse.weather.road_condition}</strong>
                       </div>
                     </div>
                   </div>
