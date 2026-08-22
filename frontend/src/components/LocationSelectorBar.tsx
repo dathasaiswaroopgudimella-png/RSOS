@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MapPin, Search, Navigation, Compass, Check, Loader2, Sparkles } from 'lucide-react';
+import { MapPin, Search, Navigation, Compass, Check, Loader2, Sparkles, Crosshair } from 'lucide-react';
 import { ApiService } from '../services/api';
 
 interface LocationSelectorBarProps {
@@ -18,9 +18,11 @@ const POPULAR_METROS = [
   { name: 'Delhi NCR', state: 'Delhi', lat: 28.6139, lon: 77.2090 },
   { name: 'Mumbai', state: 'Maharashtra', lat: 19.0760, lon: 72.8777 },
   { name: 'Chennai', state: 'Tamil Nadu', lat: 13.0827, lon: 80.2707 },
+  { name: 'Warangal', state: 'Telangana', lat: 17.9689, lon: 79.5941 },
   { name: 'Kolkata', state: 'West Bengal', lat: 22.5726, lon: 88.3639 },
   { name: 'Pune', state: 'Maharashtra', lat: 18.5204, lon: 73.8567 },
   { name: 'Jaipur', state: 'Rajasthan', lat: 26.9124, lon: 75.7873 },
+  { name: 'Visakhapatnam', state: 'Andhra Pradesh', lat: 17.6868, lon: 83.2185 },
   { name: 'Lucknow', state: 'Uttar Pradesh', lat: 26.8467, lon: 80.9462 },
   { name: 'Ahmedabad', state: 'Gujarat', lat: 23.0225, lon: 72.5714 },
 ];
@@ -50,37 +52,37 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
         onLocationSelect(res.lat, res.lon, res.display_name);
         setSearchQuery('');
       } else {
-        setSearchError('Location not found. Try entering a city, pincode, or landmark.');
+        setSearchError('Location not found. Try entering your street name, colony, city, or 6-digit pincode.');
       }
     } catch (err) {
-      setSearchError('Unable to resolve address. Please select a city below.');
+      setSearchError('Unable to resolve address. Please check connection or select a city below.');
     } finally {
       setIsSearching(false);
     }
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-5 space-y-4">
+    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-4 sm:p-6 space-y-4">
       
       {/* Top Banner: Current Resolved Location & GPS Accuracy */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-emergency-50 text-emergency-600 flex items-center justify-center shrink-0 border border-emergency-100">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-2xl bg-emergency-50 text-emergency-600 flex items-center justify-center shrink-0 border border-emergency-100 shadow-sm">
             <MapPin className="w-5 h-5 animate-bounce" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Incident Location
+                Active Incident Location
               </span>
               {gpsAccuracy !== null && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   GPS ±{Math.round(gpsAccuracy)}m
                 </span>
               )}
             </div>
-            <p className="text-sm sm:text-base font-bold text-slate-800 truncate" title={currentAddress}>
+            <p className="text-sm sm:text-base font-black text-slate-800 truncate" title={currentAddress}>
               {currentAddress || `${lat.toFixed(4)}, ${lon.toFixed(4)}`}
             </p>
           </div>
@@ -90,19 +92,19 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
         <button
           onClick={onRefreshGps}
           disabled={isGpsLocating}
-          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition active:scale-95 shrink-0"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold transition active:scale-95 shrink-0 border border-brand-200"
         >
           {isGpsLocating ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
+            <Loader2 className="w-4 h-4 animate-spin text-brand-600" />
           ) : (
-            <Navigation className="w-3.5 h-3.5 text-brand-600" />
+            <Crosshair className="w-4 h-4 text-brand-600" />
           )}
-          <span>{isGpsLocating ? 'Locating...' : 'Use My GPS'}</span>
+          <span>{isGpsLocating ? 'Acquiring GPS...' : 'Acquire My GPS Location'}</span>
         </button>
       </div>
 
-      {/* Search Input Bar */}
-      <form onSubmit={handleSearch} className="relative flex items-center gap-2">
+      {/* Search Input Bar for Any Location Across India */}
+      <form onSubmit={handleSearch} className="relative flex flex-col sm:flex-row items-stretch gap-2">
         <div className="relative flex-grow">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -112,29 +114,29 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
               setSearchQuery(e.target.value);
               if (searchError) setSearchError(null);
             }}
-            placeholder="Search any locality, pincode, or landmark (e.g. Jubilee Hills, 500034, Connaught Place)..."
-            className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
+            placeholder="Type ANY locality, landmark, street, or pincode across India (e.g. Madhapur, 500081, Koramangala, Connaught Place)..."
+            className="w-full pl-10 pr-4 py-3 text-xs sm:text-sm rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
           />
         </div>
         <button
           type="submit"
           disabled={isSearching || !searchQuery.trim()}
-          className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition active:scale-95"
+          className="px-5 py-3 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-95 shrink-0"
         >
           {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Compass className="w-4 h-4" />}
-          <span>Search</span>
+          <span>Locate &amp; Triage</span>
         </button>
       </form>
 
       {searchError && (
-        <p className="text-xs text-emergency-600 font-medium">{searchError}</p>
+        <p className="text-xs text-emergency-600 font-semibold">{searchError}</p>
       )}
 
       {/* Popular Metro Quick-Pills for 1-Click Instant Testing */}
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-          <Sparkles className="w-3 h-3 text-amber-500" />
-          <span>Quick Select Metro City:</span>
+      <div className="space-y-2 pt-1">
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          <span>Quick Select Any City / Hub:</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {POPULAR_METROS.map((metro) => {
@@ -144,7 +146,7 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
                 key={metro.name}
                 type="button"
                 onClick={() => onLocationSelect(metro.lat, metro.lon, `${metro.name}, ${metro.state}`)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 flex items-center gap-1.5 ${
                   isSelected
                     ? 'bg-brand-600 text-white shadow-sm ring-2 ring-brand-500/30'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
