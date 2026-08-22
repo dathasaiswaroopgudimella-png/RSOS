@@ -203,16 +203,16 @@ def _calculate_clinical_suitability(hospital: dict, signals: List[str], distance
     - Total bed capacity
     - Distance penalty
     """
-    score = 50.0  # Base score
-    reasons = []
-
-    # 1. Distance penalty: closer is better, but not at the expense of life-saving facilities
-    dist_penalty = min(distance_km * 1.5, 45.0)
+    # 1. Base Score & Distance Penalty (closer is better, but life-saving facilities take priority)
+    score = 80.0
+    reasons: list[str] = []
+    dist_penalty = min(distance_km * 2.2, 50.0)
     score -= dist_penalty
     if distance_km < 3.0:
         reasons.append(f"Immediate proximity ({distance_km:.1f} km)")
 
     # 2. Extract text fields
+    h_name = (hospital.get("hospital_name") or "").lower()
     specialties_str = (hospital.get("specialties") or "").lower()
     facilities_str = (hospital.get("facilities") or "").lower()
     care_type = (hospital.get("hospital_care_type") or "").lower()
@@ -220,6 +220,13 @@ def _calculate_clinical_suitability(hospital: dict, signals: List[str], distance
     beds = hospital.get("total_beds") or 0
     emergency_services = (hospital.get("emergency_services") or "").lower()
     accreditation = (hospital.get("accreditation") or "").lower()
+
+    # Exclude or heavily penalize single-specialty minor clinics during acute emergencies
+    minor_clinic_keywords = ["kids", "child", "eye", "dental", "skin", "fertility", "ivf", "hair", "physiotherapy", "dispensary", "polyclinic"]
+    is_minor_clinic = any(k in h_name for k in minor_clinic_keywords) and beds < 50
+
+    if is_minor_clinic:
+        score -= 60.0
 
     # 3. Signals to Specialty matching
     target_specialties = set()
@@ -238,10 +245,8 @@ def _calculate_clinical_suitability(hospital: dict, signals: List[str], distance
         reasons.append(f"Specialized in {top_specs}")
 
     # 4. Critical facility capability matching
-    matched_facs = []
     for fac, boost in CRITICAL_FACILITIES.items():
         if fac in facilities_str or fac in specialties_str:
-            matched_facs.append(fac)
             score += boost
 
     if "trauma center" in facilities_str or "trauma" in specialties_str:
@@ -252,36 +257,39 @@ def _calculate_clinical_suitability(hospital: dict, signals: List[str], distance
         reasons.append("Active Blood Bank")
 
     # 5. Care Type & Tier Boost
-    if tier == "tier_1" or "medical college" in care_type or "tertiary" in care_type:
-        score += 30.0
-        reasons.append("Apex Tertiary Medical Facility")
-    elif tier == "tier_2" or "hospital" in care_type:
-        score += 15.0
+    if tier == "tier_1" and not is_minor_clinic:
+        score += 25.0
+        reasons.append("Apex Level-1 Trauma Center")
+    elif tier == "tier_2":
+        score += 8.0
+    elif tier == "tier_3":
+        score -= 20.0
 
     # 6. Bed Capacity Bonus
-    if beds > 500:
-        score += 20.0
+    if beds >= 500:
+        score += 25.0
         reasons.append(f"High capacity ({beds}+ beds)")
-    elif beds > 100:
-        score += 10.0
+    elif beds >= 200:
+        score += 15.0
+    elif beds >= 50:
+        score += 5.0
+    elif beds == 0:
+        score -= 15.0
 
     # 7. Emergency Services status
     if "yes" in emergency_services:
-        score += 15.0
+        score += 10.0
         reasons.append("24/7 Dedicated Emergency Services")
 
-    # 8. Accreditation
-    if "nabh" in accreditation or "government" in accreditation:
-        score += 8.0
-        reasons.append("Accredited Medical Center")
+    # 8. Autonomous crash detection specific boost
+    if "automatic_crash_detection" in signals or "severe_crash" in signals:
+        if ("trauma" in specialties_str or "neurosurgery" in specialties_str or tier == "tier_1") and not is_minor_clinic:
+            score += 25.0
+            reasons.append("Level-1 Crash Resuscitation Hub")
 
-    # Autonomous crash detection specific boost
-    if "automatic_crash_detection" in signals:
-        if "trauma" in specialties_str or "neurosurgery" in specialties_str or tier == "tier_1":
-            score += 35.0
-            reasons.append("Priority Level-1 Crash Trauma Hub")
-
-    return max(0.0, round(score, 1)), reasons
+    # Bound score between 10.0 and 99.0
+    final_score = max(10.0, min(99.0, round(score, 1)))
+    return final_score, reasons
 
 
 def find_nearest_hospitals(
