@@ -38,7 +38,9 @@ logger.add(
     sys.stderr,
     format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{line}</cyan> — <level>{message}</level>"
 )
-logger.add("roadsos.log", rotation="20 MB", retention="10 days", compression="zip")
+# Use /tmp on Linux (Render), project root on Windows (local dev)
+_log_path = "/tmp/roadsos.log" if sys.platform != "win32" else "roadsos.log"
+logger.add(_log_path, rotation="20 MB", retention="10 days", compression="zip")
 
 
 # ──────────────────────────────────────────────
@@ -68,10 +70,19 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Middleware (Supports local dev & Vercel production domains)
+# CORS Middleware — accepts Vercel, Render, and local dev origins
+_allowed_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+]
+if CORS_ORIGIN == "*":
+    _allowed_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if CORS_ORIGIN == "*" else [CORS_ORIGIN, "http://localhost:5173", "http://localhost:3000", "https://*.vercel.app"],
+    allow_origins=_allowed_origins,
+    allow_origin_regex=r"https://(.*\.vercel\.app|.*\.onrender\.com)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

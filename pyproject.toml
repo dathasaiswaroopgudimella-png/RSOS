@@ -2,7 +2,7 @@
 name = "ros-project"
 version = "5.0.0"
 description = "RoadSOS — Emergency Decision Intelligence Platform"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
