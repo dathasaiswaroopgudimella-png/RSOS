@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { MapPin, Search, Navigation, Compass, Check, Loader2, Sparkles, Crosshair } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapPin, Search, Compass, Check, Loader2, Sparkles, Crosshair, Wand2, Building2 } from 'lucide-react';
 import { ApiService } from '../services/api';
+import { getFuzzyLocationSuggestions, LocationPreset } from '../services/FuzzyLocationEngine';
 
 interface LocationSelectorBarProps {
   currentAddress: string;
@@ -18,13 +19,13 @@ const POPULAR_METROS = [
   { name: 'Delhi NCR', state: 'Delhi', lat: 28.6139, lon: 77.2090 },
   { name: 'Mumbai', state: 'Maharashtra', lat: 19.0760, lon: 72.8777 },
   { name: 'Chennai', state: 'Tamil Nadu', lat: 13.0827, lon: 80.2707 },
+  { name: 'Varanasi', state: 'Uttar Pradesh', lat: 25.3176, lon: 82.9739 },
   { name: 'Warangal', state: 'Telangana', lat: 17.9689, lon: 79.5941 },
   { name: 'Kolkata', state: 'West Bengal', lat: 22.5726, lon: 88.3639 },
   { name: 'Pune', state: 'Maharashtra', lat: 18.5204, lon: 73.8567 },
   { name: 'Jaipur', state: 'Rajasthan', lat: 26.9124, lon: 75.7873 },
   { name: 'Visakhapatnam', state: 'Andhra Pradesh', lat: 17.6868, lon: 83.2185 },
   { name: 'Lucknow', state: 'Uttar Pradesh', lat: 26.8467, lon: 80.9462 },
-  { name: 'Ahmedabad', state: 'Gujarat', lat: 23.0225, lon: 72.5714 },
 ];
 
 export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
@@ -39,6 +40,39 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [autocorrectNotice, setAutocorrectNotice] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<LocationPreset[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Update suggestions on search input change
+  useEffect(() => {
+    if (searchQuery.trim().length >= 2) {
+      const matched = getFuzzyLocationSuggestions(searchQuery.trim(), 5);
+      setSuggestions(matched);
+    } else {
+      setSuggestions([]);
+    }
+  }, [searchQuery]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelectPreset = (preset: LocationPreset) => {
+    onLocationSelect(preset.lat, preset.lon, `${preset.name}, ${preset.city}, ${preset.state}`);
+    setSearchQuery('');
+    setShowSuggestions(false);
+    setSearchError(null);
+    setAutocorrectNotice(null);
+  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,13 +80,19 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
 
     setIsSearching(true);
     setSearchError(null);
+    setAutocorrectNotice(null);
+    setShowSuggestions(false);
+
     try {
       const res = await ApiService.searchAddress(searchQuery.trim());
       if (res && res.lat && res.lon) {
         onLocationSelect(res.lat, res.lon, res.display_name);
+        if (res.isAutocorrected) {
+          setAutocorrectNotice(`✨ Auto-corrected "${searchQuery}" → ${res.display_name.split(',')[0]}`);
+        }
         setSearchQuery('');
       } else {
-        setSearchError('Location not found. Try entering your street name, colony, city, or 6-digit pincode.');
+        setSearchError('Location not found. Try searching your campus, district, or 6-digit pincode.');
       }
     } catch (err) {
       setSearchError('Unable to resolve address. Please check connection or select a city below.');
@@ -62,7 +102,7 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-4 sm:p-6 space-y-4">
+    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-4 sm:p-6 space-y-4" ref={wrapperRef}>
       
       {/* Top Banner: Current Resolved Location & GPS Accuracy */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -103,30 +143,74 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
         </button>
       </div>
 
-      {/* Search Input Bar for Any Location Across India */}
-      <form onSubmit={handleSearch} className="relative flex flex-col sm:flex-row items-stretch gap-2">
-        <div className="relative flex-grow">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              if (searchError) setSearchError(null);
-            }}
-            placeholder="Type ANY locality, landmark, street, or pincode across India (e.g. Madhapur, 500081, Koramangala, Connaught Place)..."
-            className="w-full pl-10 pr-4 py-3 text-xs sm:text-sm rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
-          />
+      {/* Search Input Bar with Fuzzy Autocorrection & Suggestions */}
+      <div className="relative">
+        <form onSubmit={handleSearch} className="relative flex flex-col sm:flex-row items-stretch gap-2">
+          <div className="relative flex-grow">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onFocus={() => setShowSuggestions(true)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSuggestions(true);
+                if (searchError) setSearchError(null);
+              }}
+              placeholder="Search ANY locality, college, campus, or landmark (e.g. IIT BHU, Koramangala, Madhapur, Andheri)..."
+              className="w-full pl-10 pr-4 py-3 text-xs sm:text-sm rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isSearching || !searchQuery.trim()}
+            className="px-5 py-3 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-95 shrink-0"
+          >
+            {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Compass className="w-4 h-4" />}
+            <span>Locate &amp; Triage</span>
+          </button>
+        </form>
+
+        {/* Live Typeahead Autocomplete Dropdown */}
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl z-50 overflow-hidden divide-y divide-slate-100">
+            <div className="px-3.5 py-2 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Wand2 className="w-3 h-3 text-brand-600" />
+              <span>Smart Nearest Matches (Click to select):</span>
+            </div>
+            {suggestions.map((s, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleSelectPreset(s)}
+                className="w-full text-left px-4 py-2.5 hover:bg-brand-50/60 flex items-center justify-between transition group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Building2 className="w-4 h-4 text-slate-400 group-hover:text-brand-600 transition" />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 group-hover:text-brand-700 transition">
+                      {s.name}
+                    </span>
+                    <span className="text-[11px] text-slate-400 block">
+                      {s.city}, {s.state}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 group-hover:bg-brand-100 text-slate-600 group-hover:text-brand-700 transition">
+                  {s.category}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {autocorrectNotice && (
+        <div className="flex items-center gap-1.5 text-xs text-brand-700 bg-brand-50 border border-brand-200 px-3 py-1.5 rounded-xl font-medium animate-fadeIn">
+          <Wand2 className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+          <span>{autocorrectNotice}</span>
         </div>
-        <button
-          type="submit"
-          disabled={isSearching || !searchQuery.trim()}
-          className="px-5 py-3 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-95 shrink-0"
-        >
-          {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Compass className="w-4 h-4" />}
-          <span>Locate &amp; Triage</span>
-        </button>
-      </form>
+      )}
 
       {searchError && (
         <p className="text-xs text-emergency-600 font-semibold">{searchError}</p>

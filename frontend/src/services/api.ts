@@ -5,6 +5,7 @@
 
 import { EmergencyResponse, Hospital, KineticTelemetry, SystemHealth } from '../types';
 import { executeClientSideTriage } from './ClientTriageEngine';
+import { fuzzyFindIndianLocation } from './FuzzyLocationEngine';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -152,10 +153,24 @@ export class ApiService {
   }
 
   /**
-   * Search Address / Locality / Pincode
+   * Search Address / Locality / Pincode with Fuzzy Autocorrection
    */
-  static async searchAddress(query: string): Promise<{ lat: number; lon: number; display_name: string } | null> {
-    // 1. Try Backend Geocode
+  static async searchAddress(query: string): Promise<{ lat: number; lon: number; display_name: string; isAutocorrected?: boolean } | null> {
+    if (!query || !query.trim()) return null;
+
+    // 1. Check Fuzzy Autocorrect Engine First for common typos & landmark names
+    const fuzzyMatch = fuzzyFindIndianLocation(query);
+    if (fuzzyMatch && fuzzyMatch.confidence >= 0.88) {
+      const p = fuzzyMatch.preset;
+      return {
+        lat: p.lat,
+        lon: p.lon,
+        display_name: `${p.name}, ${p.city}, ${p.state}`,
+        isAutocorrected: fuzzyMatch.isAutocorrected
+      };
+    }
+
+    // 2. Try Backend Geocode
     try {
       const resp = await fetch(`${API_BASE}/api/geocode`, {
         method: 'POST',
@@ -170,7 +185,7 @@ export class ApiService {
       }
     } catch (_) {}
 
-    // 2. Direct Client-side Nominatim Search
+    // 3. Direct Client-side Nominatim Search
     try {
       const clean = encodeURIComponent(query.trim());
       const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${clean}&format=json&limit=1`, {
@@ -189,6 +204,17 @@ export class ApiService {
       }
     } catch (e) {
       console.warn('[API] Client Nominatim search failed:', e);
+    }
+
+    // 4. Fallback to Fuzzy Match if Nominatim returned 0 results
+    if (fuzzyMatch && fuzzyMatch.confidence >= 0.65) {
+      const p = fuzzyMatch.preset;
+      return {
+        lat: p.lat,
+        lon: p.lon,
+        display_name: `${p.name}, ${p.city}, ${p.state}`,
+        isAutocorrected: true
+      };
     }
 
     return null;

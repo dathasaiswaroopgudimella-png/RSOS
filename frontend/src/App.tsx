@@ -235,7 +235,16 @@ export default function App() {
 
             {/* Manual Triage Section */}
             <ManualSOS
-              onTriggerSOS={(signals, vehicle, notes) => executeEmergencyTriage(signals, vehicle, undefined, notes, lat, lon)}
+              onTriggerSOS={(signals, vehicle, notes, overrideLoc) => {
+                const useLat = overrideLoc ? overrideLoc.lat : lat;
+                const useLon = overrideLoc ? overrideLoc.lon : lon;
+                if (overrideLoc) {
+                  setLat(overrideLoc.lat);
+                  setLon(overrideLoc.lon);
+                  setAddressName(overrideLoc.name);
+                }
+                executeEmergencyTriage(signals, vehicle, undefined, notes, useLat, useLon);
+              }}
               isLoading={isLoading}
             />
 
