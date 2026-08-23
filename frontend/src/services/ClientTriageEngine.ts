@@ -142,7 +142,7 @@ export async function fetchLiveNearbyHospitals(lat: number, lon: number): Promis
   const maxLon = (lon + delta).toFixed(4);
 
   try {
-    const url = `https://nominatim.openstreetmap.org/search?amenity=hospital&format=json&limit=10&viewbox=${minLon},${maxLat},${maxLon},${minLat}&bounded=1`;
+    const url = `https://nominatim.openstreetmap.org/search?amenity=hospital&format=jsonv2&addressdetails=1&limit=12&viewbox=${minLon},${maxLat},${maxLon},${minLat}&bounded=1`;
     const resp = await fetch(url, {
       headers: {
         'Accept-Language': 'en',
@@ -156,8 +156,14 @@ export async function fetchLiveNearbyHospitals(lat: number, lon: number): Promis
           const hLat = parseFloat(item.lat);
           const hLon = parseFloat(item.lon);
           const distKm = calculateHaversineKm(lat, lon, hLat, hLon);
-          const rawName = item.display_name.split(',')[0] || 'Emergency Hospital';
-          const fullAddress = item.display_name;
+          const addr = item.address || {};
+          const rawName = item.name || item.display_name.split(',')[0] || 'Emergency Hospital';
+          const road = addr.road || addr.suburb || addr.neighbourhood || '';
+          const city = addr.city || addr.town || addr.county || addr.state_district || '';
+          const state = addr.state || '';
+          const pincode = addr.postcode || '';
+
+          const shortAddress = [road, city, state, pincode].filter(Boolean).join(', ') || item.display_name;
 
           return {
             sr_no: 10000 + idx,
@@ -167,10 +173,10 @@ export async function fetchLiveNearbyHospitals(lat: number, lon: number): Promis
             hospital_category: 'General / Trauma',
             hospital_care_type: 'Emergency Medical Center',
             discipline: 'Allopathic',
-            address: fullAddress,
-            state: '',
-            district: '',
-            pincode: '',
+            address: shortAddress,
+            state: state,
+            district: city || addr.state_district || '',
+            pincode: pincode,
             primary_phone: '108 / 112',
             emergency_num: '108',
             ambulance_phone: '108',
@@ -190,7 +196,7 @@ export async function fetchLiveNearbyHospitals(lat: number, lon: number): Promis
           };
         });
 
-        // Sort by suitability / distance
+        // Sort by distance and suitability
         hospitals.sort((a, b) => (b.suitability_score || 0) - (a.suitability_score || 0));
         return hospitals;
       }
