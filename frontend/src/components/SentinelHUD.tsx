@@ -24,8 +24,8 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
   const clampedGForce = Math.min(6.0, Math.max(0.5, telemetry.g_force || 1.0));
   const gPercentage = ((clampedGForce - 0.5) / 5.5) * 100;
 
-  const isSevereG = clampedGForce >= 4.5;
-  const isElevatedG = clampedGForce >= 2.5 && clampedGForce < 4.5;
+  const isSevereG = clampedGForce >= 3.8;
+  const isElevatedG = clampedGForce >= 2.2 && clampedGForce < 3.8;
 
   const handleTestSiren = () => {
     if (isTestingSiren) return;

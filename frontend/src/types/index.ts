@@ -130,4 +130,5 @@ export interface SystemHealth {
     weather: boolean;
     ipinfo: boolean;
   };
+  version?: string;
 }

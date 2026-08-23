@@ -160,8 +160,8 @@ class SentinelEngine {
     this.currentTelemetry.accel_z = Math.round(z * 10) / 10;
     this.currentTelemetry.g_force = Math.round(gForce * 100) / 100;
 
-    // Severe Impact Threshold (> 4.5G)
-    if (gForce > 4.5) {
+    // Severe Impact Threshold (> 3.8G)
+    if (gForce >= 3.8) {
       this.triggerAlert('impact', {
         ...this.currentTelemetry,
         anomaly_type: 'impact',
@@ -228,7 +228,7 @@ class SentinelEngine {
     if (this.telemetryCb) {
       this.telemetryCb({ ...this.currentTelemetry });
     }
-    if (g >= 4.5) {
+    if (g >= 3.8) {
       this.triggerAlert('impact', this.currentTelemetry);
     }
   }

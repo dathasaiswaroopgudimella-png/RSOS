@@ -211,7 +211,12 @@ async def _call_openrouter_ai(
     if not api_key:
         return None
 
-    model_name = "nvidia/nemotron-3-nano-30b-a3b:free"
+    models_to_try = [
+        "mistralai/mistral-7b-instruct:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
+        "google/gemini-2.0-flash-exp:free",
+        "qwen/qwen-2.5-7b-instruct:free"
+    ]
     endpoint = "https://openrouter.ai/api/v1/chat/completions"
 
     lines = []
@@ -255,37 +260,41 @@ CANDIDATE HOSPITALS:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=2.8) as client:
-            resp = await client.post(
-                endpoint,
-                headers=headers,
-                json={
-                    "model": model_name,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "temperature": 0.2,
-                    "max_tokens": 350
-                }
-            )
-
-            if resp.status_code == 200:
-                data = resp.json()
-                content = data["choices"][0]["message"]["content"]
-                parsed = _extract_json_from_text(content)
-
-                if parsed and "primary_action" in parsed:
-                    return ActionPlan(
-                        primary_action=parsed.get("primary_action", FAILSAFE_PLAN["primary_action"]),
-                        secondary_action=parsed.get("secondary_action", FAILSAFE_PLAN["secondary_action"]),
-                        reason=parsed.get("reason", "Patient clinically matched to top emergency facility."),
-                        severity=parsed.get("severity", "critical"),
-                        recommended_hospital=parsed.get("recommended_hospital", hospitals[0].hospital_name if hospitals else "Apex Medical Center"),
-                        estimated_response_time=parsed.get("estimated_response_time", "5-8 minutes"),
-                        first_aid_tips=parsed.get("first_aid_tips", FAILSAFE_PLAN["first_aid_tips"]),
-                        tier_used="neural_ai_triage"
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            for model_name in models_to_try:
+                try:
+                    resp = await client.post(
+                        endpoint,
+                        headers=headers,
+                        json={
+                            "model": model_name,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            "temperature": 0.2,
+                            "max_tokens": 350
+                        }
                     )
+
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        content = data["choices"][0]["message"]["content"]
+                        parsed = _extract_json_from_text(content)
+
+                        if parsed and "primary_action" in parsed:
+                            return ActionPlan(
+                                primary_action=parsed.get("primary_action", FAILSAFE_PLAN["primary_action"]),
+                                secondary_action=parsed.get("secondary_action", FAILSAFE_PLAN["secondary_action"]),
+                                reason=parsed.get("reason", "Patient clinically matched to top emergency facility."),
+                                severity=parsed.get("severity", "critical"),
+                                recommended_hospital=parsed.get("recommended_hospital", hospitals[0].hospital_name if hospitals else "Apex Medical Center"),
+                                estimated_response_time=parsed.get("estimated_response_time", "5-8 minutes"),
+                                first_aid_tips=parsed.get("first_aid_tips", FAILSAFE_PLAN["first_aid_tips"]),
+                                tier_used="neural_ai_triage"
+                            )
+                except Exception:
+                    continue
     except Exception as e:
         logger.warning(f"[AI_TRIAGE] OpenRouter LLM call timed out or failed: {e}. Falling back to deterministic.")
 

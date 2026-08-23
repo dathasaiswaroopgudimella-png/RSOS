@@ -15,7 +15,7 @@ import { AITriageCopilot } from './components/AITriageCopilot';
 import { EmergencyContactsModal } from './components/EmergencyContactsModal';
 import { SystemDiagnostics } from './components/SystemDiagnostics';
 import { sentinelEngine } from './services/SentinelEngine';
-import { ApiService, FALLBACK_HOSPITALS } from './services/api';
+import { ApiService } from './services/api';
 import {
   AppMode, EmergencyState, Hospital, KineticTelemetry,
   SentinelAlert, EmergencyResponse
@@ -47,11 +47,20 @@ export default function App() {
   const [isContactsOpen, setIsContactsOpen] = useState<boolean>(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
 
-  // 1. Resolve initial location via Browser GPS / IP Geolocation
+  // 1. Resolve initial location via Instant IP Pre-fill + Browser GPS Refinement
   const resolveLocation = useCallback(async () => {
     setIsGpsLocating(true);
-    
-    // First try browser GPS
+
+    // Instant IP detection first (Zero-delay location resolution)
+    ApiService.getIpLocation().then((ipLoc) => {
+      if (ipLoc) {
+        setLat((prev) => (prev === 17.4319 ? ipLoc.lat : prev));
+        setLon((prev) => (prev === 78.4073 ? ipLoc.lon : prev));
+        setAddressName((prev) => (prev.includes('Jubilee Hills') ? ipLoc.display_name : prev));
+      }
+    }).catch((e) => console.warn('[Location] Pre-fill IP failed:', e));
+
+    // Browser High-Accuracy GPS
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
@@ -66,7 +75,7 @@ export default function App() {
           setAddressName(humanName);
         },
         async (err) => {
-          console.warn('[GPS] Browser GPS denied/timeout, attempting IP location:', err.message);
+          console.warn('[GPS] Browser GPS unavailable, relying on IP location:', err.message);
           const ipLoc = await ApiService.getIpLocation();
           if (ipLoc) {
             setLat(ipLoc.lat);
@@ -78,12 +87,6 @@ export default function App() {
         { enableHighAccuracy: true, timeout: 6000 }
       );
     } else {
-      const ipLoc = await ApiService.getIpLocation();
-      if (ipLoc) {
-        setLat(ipLoc.lat);
-        setLon(ipLoc.lon);
-        setAddressName(ipLoc.display_name);
-      }
       setIsGpsLocating(false);
     }
   }, []);
