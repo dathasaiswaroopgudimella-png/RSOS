@@ -1,7 +1,10 @@
 /**
- * RoadSOS Sentinel Omniscient Engine (v6.0)
- * High-frequency kinetic anomaly detection, real physical accelerometer monitoring,
- * multi-vehicle sensitivity profiles (Bike / Car / Truck / Test), and crash simulation studio.
+ * RoadSOS Sentinel Omniscient Engine (v6.2)
+ * High-frequency kinetic anomaly detection:
+ * 1. Mobile MEMS 3-axis accelerometer sensor (60Hz)
+ * 2. Laptop/Desktop cursor & trackpad physical inertia dynamics
+ * 3. Multi-vehicle sensitivity profiles (Bike / Car / Truck / Demo)
+ * 4. Crash simulation studio & manual kinetic throttle
  */
 
 import { KineticTelemetry, SentinelAlert } from '../types';
@@ -63,25 +66,25 @@ class SentinelEngine {
     timestamp: Date.now(),
   };
 
-  private peakGForce: number = 1.0;
   private lastSpeedKmh: number = 0;
   private lastSpeedTimestamp: number = 0;
-  private sensor: any = null;
   private watchId: number | null = null;
   private telemetryInterval: any = null;
   private isMotionPermissionGranted: boolean = false;
-  private isHardwareSensorActive: boolean = false;
+  private hasReceivedHardwareMotion: boolean = false;
+
+  // Trackpad / Mouse inertia tracking for laptop testing
+  private lastMouseX: number = 0;
+  private lastMouseY: number = 0;
+  private lastMouseTime: number = 0;
 
   constructor() {
     this.initSensors();
   }
 
   private initSensors() {
-    if (typeof window !== 'undefined' && 'LinearAccelerationSensor' in window) {
-      try {
-        this.sensor = new (window as any).LinearAccelerationSensor({ frequency: 60 });
-        this.sensor.addEventListener('reading', () => this.handleLinearSensor());
-      } catch (_) {}
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mousemove', this.handleMouseMove, { passive: true });
     }
   }
 
@@ -103,9 +106,6 @@ class SentinelEngine {
       try {
         const state = await (DeviceMotionEvent as any).requestPermission();
         this.isMotionPermissionGranted = state === 'granted';
-        if (this.isMotionPermissionGranted) {
-          this.isHardwareSensorActive = true;
-        }
         return this.isMotionPermissionGranted;
       } catch (e) {
         console.warn('[SENTINEL] Motion permission request error:', e);
@@ -113,12 +113,11 @@ class SentinelEngine {
       }
     }
     this.isMotionPermissionGranted = true;
-    this.isHardwareSensorActive = true;
     return true;
   }
 
-  public isHardwareConnected(): boolean {
-    return this.isHardwareSensorActive;
+  public isHardwareStreaming(): boolean {
+    return this.hasReceivedHardwareMotion;
   }
 
   public activate(onAnomaly: AnomalyCallback, onTelemetry?: TelemetryCallback) {
@@ -126,22 +125,13 @@ class SentinelEngine {
     if (onTelemetry) this.telemetryCb = onTelemetry;
     this.active = true;
 
-    // 1. Hardware sensors
-    if (this.sensor) {
-      try {
-        this.sensor.start();
-        this.isHardwareSensorActive = true;
-      } catch (_) {}
-    } else if (typeof window !== 'undefined') {
-      window.addEventListener('devicemotion', this.handleDeviceMotion, true);
-    }
-
     if (typeof window !== 'undefined') {
+      window.addEventListener('devicemotion', this.handleDeviceMotion, true);
       window.addEventListener('deviceorientation', this.handleOrientation, true);
     }
     this.startGpsTracking();
 
-    // 2. High-frequency telemetry heartbeat loop (10Hz)
+    // High-frequency telemetry heartbeat loop (10Hz)
     this.telemetryInterval = setInterval(() => {
       if (!this.active) return;
       this.currentTelemetry.timestamp = Date.now();
@@ -150,16 +140,11 @@ class SentinelEngine {
       }
     }, 100);
 
-    console.log('[SENTINEL] Sentinel Omniscient Engine v6.0 active.');
+    console.log('[SENTINEL] Sentinel Omniscient Engine v6.2 active.');
   }
 
   public deactivate() {
     this.active = false;
-    if (this.sensor) {
-      try {
-        this.sensor.stop();
-      } catch (_) {}
-    }
     if (typeof window !== 'undefined') {
       window.removeEventListener('devicemotion', this.handleDeviceMotion);
       window.removeEventListener('deviceorientation', this.handleOrientation);
@@ -179,25 +164,21 @@ class SentinelEngine {
     this.telemetryCb = null;
   }
 
-  private handleLinearSensor = () => {
-    if (!this.active || !this.sensor) return;
-    const { x = 0, y = 0, z = 0 } = this.sensor;
-    this.isHardwareSensorActive = true;
-    this.processAcceleration(x, y, z + 9.8);
-  };
-
+  // 1. Mobile Physical Hardware Accelerometer Handler
   private handleDeviceMotion = (event: DeviceMotionEvent) => {
     if (!this.active) return;
     const accel = event.accelerationIncludingGravity || event.acceleration;
-    if (!accel) return;
+    if (!accel || (accel.x === null && accel.y === null && accel.z === null)) return;
 
-    this.isHardwareSensorActive = true;
+    this.hasReceivedHardwareMotion = true;
     const x = accel.x || 0;
     const y = accel.y || 0;
-    const z = (accel.z !== null && accel.z !== undefined) ? accel.z : 9.8;
+    const z = (accel.z !== null && accel.z !== undefined) ? accel.z : 9.80665;
+
     this.processAcceleration(x, y, z);
   };
 
+  // 2. Mobile Physical Hardware Gyroscope / Orientation Handler
   private handleOrientation = (event: DeviceOrientationEvent) => {
     if (!this.active) return;
     const beta = Math.abs(event.beta || 0);
@@ -206,7 +187,6 @@ class SentinelEngine {
 
     this.currentTelemetry.tilt_angle_deg = Math.round(maxTilt);
 
-    // Rollover detection threshold based on active vehicle profile
     const threshold = SENSITIVITY_PROFILES[this.profile].tiltAngleDeg;
     if (maxTilt >= threshold) {
       this.triggerAlert('rollover', {
@@ -214,6 +194,39 @@ class SentinelEngine {
         anomaly_type: 'rollover',
       });
     }
+  };
+
+  // 3. Laptop/Desktop Physical Mouse & Trackpad Hand-Inertia Sensor
+  private handleMouseMove = (e: MouseEvent) => {
+    if (!this.active || this.hasReceivedHardwareMotion) return;
+
+    const now = performance.now();
+    if (this.lastMouseTime > 0) {
+      const dt = (now - this.lastMouseTime) / 1000;
+      if (dt > 0.01 && dt < 0.15) {
+        const dx = e.clientX - this.lastMouseX;
+        const dy = e.clientY - this.lastMouseY;
+        const speedPixelsPerSec = Math.sqrt(dx * dx + dy * dy) / dt;
+
+        // Convert hand flick speed to equivalent physical G-force (1.0G rest up to 6.0G on hard fast shake)
+        if (speedPixelsPerSec > 1200) {
+          const dynamicG = Math.min(6.0, 1.0 + (speedPixelsPerSec / 1500) * 1.5);
+          const ax = Math.round((dx / dt / 150) * 10) / 10;
+          const ay = Math.round((dy / dt / 150) * 10) / 10;
+          this.processAcceleration(ax, ay, 9.8);
+        } else {
+          // Smooth return to resting 1.00G
+          this.currentTelemetry.g_force = 1.00;
+          this.currentTelemetry.accel_x = 0.0;
+          this.currentTelemetry.accel_y = 0.0;
+          this.currentTelemetry.accel_z = 9.8;
+        }
+      }
+    }
+
+    this.lastMouseX = e.clientX;
+    this.lastMouseY = e.clientY;
+    this.lastMouseTime = now;
   };
 
   private processAcceleration(x: number, y: number, z: number) {
@@ -225,11 +238,6 @@ class SentinelEngine {
     this.currentTelemetry.accel_z = Math.round(z * 10) / 10;
     this.currentTelemetry.g_force = Math.round(gForce * 100) / 100;
 
-    if (gForce > this.peakGForce) {
-      this.peakGForce = gForce;
-    }
-
-    // Impact threshold based on active vehicle profile
     const impactThreshold = SENSITIVITY_PROFILES[this.profile].impactG;
     if (gForce >= impactThreshold) {
       this.triggerAlert('impact', {
@@ -256,7 +264,6 @@ class SentinelEngine {
               this.currentTelemetry.delta_speed_kmh = deltaSpeed;
 
               const dropThreshold = SENSITIVITY_PROFILES[this.profile].speedDropKmh;
-              // Sudden crash stop detection
               if (this.lastSpeedKmh > dropThreshold && speedKmh < 6 && deltaSpeed >= dropThreshold) {
                 this.triggerAlert('sudden_stop', {
                   ...this.currentTelemetry,

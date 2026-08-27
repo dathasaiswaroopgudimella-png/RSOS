@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Search, Compass, Check, Loader2, Sparkles, Crosshair, Wand2, Building2 } from 'lucide-react';
+import { MapPin, Search, Compass, Check, Loader2, Sparkles, Crosshair, Wand2, Building2, LandPlot } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { getFuzzyLocationSuggestions, LocationPreset } from '../services/FuzzyLocationEngine';
 
@@ -110,9 +110,9 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
           <div className="w-10 h-10 rounded-2xl bg-emergency-50 text-emergency-600 flex items-center justify-center shrink-0 border border-emergency-100 shadow-sm">
             <MapPin className="w-5 h-5 animate-bounce" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-0.5">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
                 Active Incident Location
               </span>
               {gpsAccuracy !== null && (
@@ -122,9 +122,12 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
                 </span>
               )}
             </div>
-            <p className="text-sm sm:text-base font-black text-slate-800 truncate" title={currentAddress}>
+            <p className="text-sm sm:text-base font-black text-slate-900 truncate" title={currentAddress}>
               {currentAddress || `${lat.toFixed(4)}, ${lon.toFixed(4)}`}
             </p>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
+              <span>Coordinates: {lat.toFixed(4)}° N, {lon.toFixed(4)}° E</span>
+            </div>
           </div>
         </div>
 
@@ -157,7 +160,7 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
                 setShowSuggestions(true);
                 if (searchError) setSearchError(null);
               }}
-              placeholder="Search ANY locality, college, campus, or landmark (e.g. IIT BHU, Koramangala, Madhapur, Andheri)..."
+              placeholder="Search ANY locality, town, college, campus, or landmark (e.g. IIT BHU, Koramangala, Madhapur, Andheri)..."
               className="w-full pl-10 pr-4 py-3 text-xs sm:text-sm rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
             />
           </div>
