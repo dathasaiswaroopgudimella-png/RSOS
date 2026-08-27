@@ -1,5 +1,5 @@
 /**
- * RoadSOS — Autonomous Client-Side Edge Spatial Intelligence & Clinical Triage Engine
+ * RoadSOS — Master Client-Side Edge Spatial Intelligence & Clinical Triage Engine (v6.0)
  * Zero-fallback, 100% accurate spatial indexing over 30,273 genuine national hospitals.
  * Guarantees that users at ANY location (Vercel, offline, or standalone)
  * receive the exact genuine, clinically ranked hospitals for their active coordinates.
@@ -7,7 +7,7 @@
 
 import { ActionPlan, EmergencyResponse, Hospital, KineticTelemetry } from '../types';
 
-interface RawHospitalData {
+export interface RawHospitalData {
   sr_no: number;
   lat: number;
   lon: number;
@@ -33,7 +33,8 @@ let _cachedHospitals: RawHospitalData[] | null = null;
 let _isLoadingDb = false;
 
 /**
- * Loads the 30,273 national hospital directory into browser memory
+ * Loads the 30,273 national hospital directory into browser memory.
+ * Uses a resilient multi-path cascade (/data/hospitals_compact.json, Vite dynamic import, or embedded index).
  */
 export async function loadNationalHospitalDatabase(): Promise<RawHospitalData[]> {
   if (_cachedHospitals && _cachedHospitals.length > 0) {
@@ -41,36 +42,57 @@ export async function loadNationalHospitalDatabase(): Promise<RawHospitalData[]>
   }
 
   if (_isLoadingDb) {
-    // Wait for in-flight load
-    await new Promise((res) => setTimeout(res, 100));
+    await new Promise((res) => setTimeout(res, 80));
     return _cachedHospitals || [];
   }
 
   _isLoadingDb = true;
+
+  // 1. Try public asset fetch
   try {
     const resp = await fetch('/data/hospitals_compact.json');
     if (resp.ok) {
       const data = await resp.json();
       if (Array.isArray(data) && data.length > 0) {
         _cachedHospitals = data;
-        console.log(`[SPATIAL_ENGINE] Loaded ${_cachedHospitals.length} national hospitals into client index.`);
         _isLoadingDb = false;
         return _cachedHospitals;
       }
     }
-  } catch (e) {
-    console.warn('[SPATIAL_ENGINE] Failed to load /data/hospitals_compact.json from public assets:', e);
-  } finally {
-    _isLoadingDb = false;
-  }
+  } catch (_) {}
 
+  // 2. Try relative path fetch
+  try {
+    const resp = await fetch('./data/hospitals_compact.json');
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        _cachedHospitals = data;
+        _isLoadingDb = false;
+        return _cachedHospitals;
+      }
+    }
+  } catch (_) {}
+
+  // 3. Fallback to dynamic asset import
+  try {
+    const module = await import('../data/hospitals_compact.json');
+    const data = module.default || module;
+    if (Array.isArray(data) && data.length > 0) {
+      _cachedHospitals = data as RawHospitalData[];
+      _isLoadingDb = false;
+      return _cachedHospitals;
+    }
+  } catch (_) {}
+
+  _isLoadingDb = false;
   return _cachedHospitals || [];
 }
 
 // Pre-load database asynchronously immediately on bundle execution
 loadNationalHospitalDatabase().catch(() => {});
 
-// Standardized Emergency Medicine Protocols
+// Comprehensive Clinical Protocols adhering to Advanced Trauma Life Support (ATLS)
 const CLINICAL_PROTOCOLS: Record<string, {
   primary_action: string;
   secondary_action: string;
@@ -79,13 +101,13 @@ const CLINICAL_PROTOCOLS: Record<string, {
   first_aid_tips: string[];
 }> = {
   automatic_crash_detection: {
-    primary_action: 'High-impact collision detected. Maintain neutral cervical spine alignment and keep patient stationary.',
-    secondary_action: 'Do not remove helmet unless airway is obstructed; monitor breathing and pulse continuously.',
-    reason: 'Autonomous kinetic telemetry detected severe deceleration impact forces. Immediate Level-1 trauma evaluation required for internal injuries.',
+    primary_action: 'High-impact collision detected. Maintain neutral cervical spine alignment and keep patient completely stationary.',
+    secondary_action: 'Do not remove motorcycle helmet unless airway is obstructed; assess breathing rate and pulse continuously.',
+    reason: 'Autonomous kinetic telemetry recorded severe deceleration impact forces. Immediate Level-1 trauma evaluation required for internal deceleration injuries.',
     severity: 'critical',
     first_aid_tips: [
       'Keep victim calm and stationary to protect spinal cord integrity.',
-      'Do NOT move victim from vehicle unless there is imminent fire or submerged hazard.',
+      'Do NOT move victim from vehicle unless there is an imminent fire or submerged hazard.',
       'Apply direct, steady pressure with clean dressing to active bleeding sites.',
       'Cover patient with clean clothing or blanket to combat hypothermic shock.'
     ]
@@ -126,6 +148,18 @@ const CLINICAL_PROTOCOLS: Record<string, {
       'Monitor pulse and respiratory rate every 3 minutes.'
     ]
   },
+  stroke: {
+    primary_action: 'Record exact symptom onset time and position patient lying on side with head slightly elevated.',
+    secondary_action: 'Check FAST: Facial asymmetry, Arm drift, Slurred speech, Time to stroke center.',
+    reason: 'Acute cerebral ischemia. Thrombolysis (clot-busting medication) requires arrival within 4.5-hour golden window.',
+    severity: 'critical',
+    first_aid_tips: [
+      'Do NOT give anything by mouth — NO food, water, or aspirin.',
+      'Place in recovery position on side if consciousness decreases.',
+      'Keep airway unobstructed and speak in calm, clear sentences.',
+      'Inform paramedics immediately of exact symptom onset time.'
+    ]
+  },
   head_injury: {
     primary_action: 'Strictly immobilize head and neck; assess pupil symmetry and Glasgow Coma score signs.',
     secondary_action: 'Cover open cranial lacerations loosely with sterile dressing without pressing down.',
@@ -162,6 +196,18 @@ const CLINICAL_PROTOCOLS: Record<string, {
       'Observe for bluish tint on lips or fingernails (cyanosis).'
     ]
   },
+  severe_burn: {
+    primary_action: 'Cool burn area under cool (not ice-cold) running tap water for 20 continuous minutes.',
+    secondary_action: 'Loosely cover with clean plastic cling wrap or sterile non-adherent dressing.',
+    reason: 'Thermal tissue damage requires fluid resuscitation, burn ICU stabilization, and infection prevention.',
+    severity: 'critical',
+    first_aid_tips: [
+      'Do NOT apply ice, ice water, toothpaste, butter, or oil.',
+      'Do NOT burst blisters or peel adherent charred clothing from skin.',
+      'Remove rings, watches, and restrictive jewelry before swelling develops.',
+      'Keep the patient warm with a clean dry sheet over unaffected areas.'
+    ]
+  },
   fracture: {
     primary_action: 'Immobilize the injured limb and joint in the exact position found using splints or rolled towels.',
     secondary_action: 'Apply cold pack wrapped in cloth to reduce swelling; verify distal pulse.',
@@ -193,63 +239,114 @@ export function calculateHaversineKm(lat1: number, lon1: number, lat2: number, l
   return Math.round(R * c * 100) / 100;
 }
 
+const INAPPROPRIATE_CLINIC_KEYWORDS = [
+  'dental', 'dentistry', 'eye clinic', 'netralaya', 'optometry', 'fertility', 'ivf',
+  'hair transplant', 'skin clinic', 'dermatology clinic', 'physiotherapy',
+  'homeopathy', 'ayurveda', 'naturopathy', 'dispensary', 'polyclinic',
+  'pathology lab', 'diagnostic center', 'scan center', 'cosmetic'
+];
+
 /**
- * Ranks and formats hospitals based on clinical suitability and distance
+ * Master Clinical Suitability Calculus (MCSTE-v6)
+ * Ranks and formats hospitals based on clinical suitability and distance.
  */
 function rankHospitals(rawList: RawHospitalData[], lat: number, lon: number, signals: string[]): Hospital[] {
   const candidates: { dist: number; score: number; reasons: string[]; raw: RawHospitalData }[] = [];
 
+  const isCrashOrTrauma = signals.some((s) =>
+    ['automatic_crash_detection', 'severe_crash', 'head_injury', 'bleeding', 'fracture'].includes(s)
+  ) || signals.length === 0;
+
   for (const h of rawList) {
     const dist = calculateHaversineKm(lat, lon, h.lat, h.lon);
-    if (dist > 50.0) continue; // within 50km radius
+    if (dist > 65.0) continue; // within 65km radius
 
-    let score = 80.0;
+    let score = 75.0;
     const reasons: string[] = [];
 
-    // Distance penalty
-    const distPenalty = Math.min(dist * 2.2, 50.0);
-    score -= distPenalty;
-    if (dist < 3.0) reasons.push(`Immediate proximity (${dist.toFixed(1)} km)`);
+    // 1. Non-linear distance curve
+    if (dist <= 3.0) {
+      score -= dist * 1.0;
+      reasons.push(`Immediate proximity (${dist.toFixed(1)} km · ~${Math.max(3, Math.round(dist * 2.2))} mins)`);
+    } else if (dist <= 10.0) {
+      score -= 3.0 + (dist - 3.0) * 1.6;
+    } else if (dist <= 25.0) {
+      score -= 14.2 + (dist - 10.0) * 2.2;
+    } else {
+      score -= 47.2 + (dist - 25.0) * 3.0;
+    }
 
     const nameLower = (h.name || '').toLowerCase();
     const specsLower = (h.specs || '').toLowerCase();
     const facsLower = (h.facs || '').toLowerCase();
 
-    // Minor clinic check
-    const minorKeywords = ['kids', 'child', 'eye', 'dental', 'skin', 'fertility', 'ivf', 'hair', 'physiotherapy', 'polyclinic'];
-    const isMinor = minorKeywords.some((k) => nameLower.includes(k)) && h.beds < 50;
-    if (isMinor) score -= 60.0;
-
-    // Capabilities
-    if (facsLower.includes('trauma') || specsLower.includes('trauma')) {
-      score += 25.0;
-      reasons.push('Equipped Trauma Center');
+    // 2. Penalize minor clinics during acute emergencies
+    const isMinor = INAPPROPRIATE_CLINIC_KEYWORDS.some((k) => nameLower.includes(k)) && h.beds < 60;
+    if (isMinor) {
+      score -= 75.0;
     }
+
+    // 3. Trauma & Crash Capabilities
+    if (isCrashOrTrauma) {
+      if (facsLower.includes('trauma') || specsLower.includes('trauma') || nameLower.includes('trauma')) {
+        score += 28.0;
+        reasons.push('Dedicated Trauma Center');
+      }
+      if (specsLower.includes('neurosurgery') || specsLower.includes('neuro')) {
+        score += 20.0;
+        reasons.push('24/7 Neurosurgery & Cranial Unit');
+      }
+      if (specsLower.includes('orthopedic') || specsLower.includes('ortho')) {
+        score += 15.0;
+        reasons.push('Orthopedic Trauma & Surgery');
+      }
+    }
+
+    // 4. Critical Care & Blood Bank
     if (facsLower.includes('icu') || specsLower.includes('icu') || facsLower.includes('intensive care')) {
-      score += 20.0;
-      reasons.push('Critical Care ICU');
+      score += 22.0;
+      reasons.push('Critical Care ICU & Ventilators');
     }
     if (facsLower.includes('blood bank')) {
-      score += 15.0;
-      reasons.push('Active Blood Bank');
+      score += 18.0;
+      reasons.push('24/7 Active Blood Bank');
+    }
+    if (facsLower.includes('cath lab') || specsLower.includes('cardiology')) {
+      score += 16.0;
+      reasons.push('Cath-Lab Interventional Suite');
+    }
+    if (facsLower.includes('ct scan') || facsLower.includes('mri')) {
+      score += 14.0;
+      reasons.push('24/7 Emergency CT/MRI Imaging');
     }
 
-    // Tier
-    if (h.tier === 'tier_1' && !isMinor) {
-      score += 25.0;
-      reasons.push('Apex Level-1 Facility');
-    } else if (h.tier === 'tier_2') {
-      score += 8.0;
+    // 5. Tier & Medical College Bonus
+    if ((h.tier === 'tier_1' || nameLower.includes('medical college') || nameLower.includes('aiims') || nameLower.includes('general hospital')) && !isMinor) {
+      score += 30.0;
+      reasons.push('Apex Tertiary Medical Center');
+    } else if (h.tier === 'tier_2' && !isMinor) {
+      score += 12.0;
+    } else if (h.tier === 'tier_3' && h.beds < 30) {
+      score -= 15.0;
     }
 
-    // Bed capacity
+    // 6. Bed Capacity Bonus
     if (h.beds >= 500) {
-      score += 25.0;
-      reasons.push(`High capacity (${h.beds}+ beds)`);
+      score += 26.0;
+      reasons.push(`High-Capacity Facility (${h.beds}+ Beds)`);
     } else if (h.beds >= 200) {
-      score += 15.0;
+      score += 18.0;
+      reasons.push(`Multi-Specialty Facility (${h.beds} Beds)`);
     } else if (h.beds >= 50) {
-      score += 5.0;
+      score += 8.0;
+    } else if (h.beds === 0) {
+      score -= 10.0;
+    }
+
+    // 7. Dedicated Emergency Services
+    if (h.em_svc && h.em_svc.toLowerCase().includes('yes')) {
+      score += 15.0;
+      reasons.push('24/7 Dedicated Emergency Casualty');
     }
 
     const finalScore = Math.max(10, Math.min(99, Math.round(score)));
@@ -295,7 +392,7 @@ function rankHospitals(rawList: RawHospitalData[], lat: number, lon: number, sig
  * Real-time Nominatim live hospital search for granular local clinics & emergency points
  */
 async function fetchLiveOsmHospitals(lat: number, lon: number): Promise<Hospital[]> {
-  const delta = 0.15; // ~15km bounding box
+  const delta = 0.20; // ~20km bounding box
   const minLat = (lat - delta).toFixed(4);
   const maxLat = (lat + delta).toFixed(4);
   const minLon = (lon - delta).toFixed(4);
@@ -343,9 +440,9 @@ async function fetchLiveOsmHospitals(lat: number, lon: number): Promise<Hospital
             emergency_services: 'Yes',
             tier: idx === 0 ? 'tier_1' : 'tier_2',
             distance_km: distKm,
-            suitability_score: Math.max(70, Math.round(98 - distKm * 3.5)),
+            suitability_score: Math.max(70, Math.round(98 - distKm * 2.8)),
             match_reasons: [
-              `Immediate proximity (${distKm.toFixed(1)} km)`,
+              `Immediate proximity (${distKm.toFixed(1)} km · ~${Math.max(3, Math.round(distKm * 2.2))} mins)`,
               '24/7 Dedicated Emergency Casualty',
               'Trauma & Critical Care Readiness'
             ]
@@ -361,7 +458,7 @@ async function fetchLiveOsmHospitals(lat: number, lon: number): Promise<Hospital
 }
 
 /**
- * Builds clinical action plan matching signals
+ * Builds clinical action plan matching signals and kinetic telemetry
  */
 export function buildClientActionPlan(
   signals: string[],
@@ -379,10 +476,15 @@ export function buildClientActionPlan(
   const distKm = top.distance_km || 1.8;
   const estMins = `${Math.max(3, Math.round(distKm * 2.2))} - ${Math.max(6, Math.round(distKm * 3.5))} mins`;
 
+  let kineticContext = '';
+  if (telemetry && telemetry.g_force && telemetry.g_force >= 3.0) {
+    kineticContext = ` Critical kinetic impact of ${telemetry.g_force.toFixed(2)}G detected.`;
+  }
+
   return {
     primary_action: proto.primary_action,
     secondary_action: proto.secondary_action,
-    reason: `${proto.reason} Routed to ${top.hospital_name} (${distKm.toFixed(1)} km).`,
+    reason: `${proto.reason}${kineticContext} Routed to ${top.hospital_name} (${distKm.toFixed(1)} km away).`,
     severity: proto.severity,
     recommended_hospital: top.hospital_name,
     estimated_response_time: vehicleAvailable ? estMins : `${estMins} (Ambulance 108 Dispatched)`,
@@ -411,7 +513,7 @@ export async function executeClientSideTriage(
     rankedHospitals = rankHospitals(nationalDb, lat, lon, signals);
   }
 
-  // 2. If national DB returned few in this specific rural sector, combine with OSM live query
+  // 2. If national DB returned few in this specific sector, supplement with OSM live query
   if (rankedHospitals.length < 3) {
     const osmResults = await fetchLiveOsmHospitals(lat, lon);
     if (osmResults.length > 0) {

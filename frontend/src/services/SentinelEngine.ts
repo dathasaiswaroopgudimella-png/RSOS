@@ -1,18 +1,54 @@
 /**
- * RoadSOS Sentinel Omniscient Engine (v5.2)
+ * RoadSOS Sentinel Omniscient Engine (v6.0)
  * High-frequency kinetic anomaly detection, real physical accelerometer monitoring,
- * and crash simulation studio.
+ * multi-vehicle sensitivity profiles (Bike / Car / Truck / Test), and crash simulation studio.
  */
 
 import { KineticTelemetry, SentinelAlert } from '../types';
 
 export type AnomalyCallback = (alert: SentinelAlert) => void;
 export type TelemetryCallback = (telemetry: KineticTelemetry) => void;
+export type VehicleProfile = 'BIKE' | 'CAR' | 'TRUCK' | 'TEST';
+
+export interface ProfileThresholds {
+  impactG: number;
+  tiltAngleDeg: number;
+  speedDropKmh: number;
+  label: string;
+}
+
+export const SENSITIVITY_PROFILES: Record<VehicleProfile, ProfileThresholds> = {
+  BIKE: {
+    impactG: 3.2,
+    tiltAngleDeg: 52,
+    speedDropKmh: 25,
+    label: 'Motorcycle / 2-Wheeler'
+  },
+  CAR: {
+    impactG: 3.8,
+    tiltAngleDeg: 65,
+    speedDropKmh: 35,
+    label: 'Passenger Car / Sedan'
+  },
+  TRUCK: {
+    impactG: 4.8,
+    tiltAngleDeg: 75,
+    speedDropKmh: 45,
+    label: 'Heavy Commercial / Bus'
+  },
+  TEST: {
+    impactG: 2.2,
+    tiltAngleDeg: 45,
+    speedDropKmh: 15,
+    label: 'High-Sensitivity Demo Mode'
+  }
+};
 
 class SentinelEngine {
   private active: boolean = false;
   private anomalyCb: AnomalyCallback | null = null;
   private telemetryCb: TelemetryCallback | null = null;
+  private profile: VehicleProfile = 'CAR';
 
   // Kinetic state
   private currentTelemetry: KineticTelemetry = {
@@ -27,26 +63,39 @@ class SentinelEngine {
     timestamp: Date.now(),
   };
 
+  private peakGForce: number = 1.0;
   private lastSpeedKmh: number = 0;
   private lastSpeedTimestamp: number = 0;
   private sensor: any = null;
   private watchId: number | null = null;
   private telemetryInterval: any = null;
   private isMotionPermissionGranted: boolean = false;
+  private isHardwareSensorActive: boolean = false;
 
   constructor() {
     this.initSensors();
   }
 
   private initSensors() {
-    if ('LinearAccelerationSensor' in window) {
+    if (typeof window !== 'undefined' && 'LinearAccelerationSensor' in window) {
       try {
         this.sensor = new (window as any).LinearAccelerationSensor({ frequency: 60 });
         this.sensor.addEventListener('reading', () => this.handleLinearSensor());
-      } catch (e) {
-        console.warn('[SENTINEL] LinearAccelerationSensor fallback to devicemotion');
-      }
+      } catch (_) {}
     }
+  }
+
+  public setVehicleProfile(p: VehicleProfile) {
+    this.profile = p;
+    console.log(`[SENTINEL] Vehicle profile switched to: ${p} (${SENSITIVITY_PROFILES[p].label})`);
+  }
+
+  public getVehicleProfile(): VehicleProfile {
+    return this.profile;
+  }
+
+  public getProfileThresholds(): ProfileThresholds {
+    return SENSITIVITY_PROFILES[this.profile];
   }
 
   public async requestMotionPermission(): Promise<boolean> {
@@ -54,6 +103,9 @@ class SentinelEngine {
       try {
         const state = await (DeviceMotionEvent as any).requestPermission();
         this.isMotionPermissionGranted = state === 'granted';
+        if (this.isMotionPermissionGranted) {
+          this.isHardwareSensorActive = true;
+        }
         return this.isMotionPermissionGranted;
       } catch (e) {
         console.warn('[SENTINEL] Motion permission request error:', e);
@@ -61,7 +113,12 @@ class SentinelEngine {
       }
     }
     this.isMotionPermissionGranted = true;
+    this.isHardwareSensorActive = true;
     return true;
+  }
+
+  public isHardwareConnected(): boolean {
+    return this.isHardwareSensorActive;
   }
 
   public activate(onAnomaly: AnomalyCallback, onTelemetry?: TelemetryCallback) {
@@ -73,12 +130,15 @@ class SentinelEngine {
     if (this.sensor) {
       try {
         this.sensor.start();
+        this.isHardwareSensorActive = true;
       } catch (_) {}
-    } else {
+    } else if (typeof window !== 'undefined') {
       window.addEventListener('devicemotion', this.handleDeviceMotion, true);
     }
 
-    window.addEventListener('deviceorientation', this.handleOrientation, true);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('deviceorientation', this.handleOrientation, true);
+    }
     this.startGpsTracking();
 
     // 2. High-frequency telemetry heartbeat loop (10Hz)
@@ -90,7 +150,7 @@ class SentinelEngine {
       }
     }, 100);
 
-    console.log('[SENTINEL] Sentinel Omniscient Engine active.');
+    console.log('[SENTINEL] Sentinel Omniscient Engine v6.0 active.');
   }
 
   public deactivate() {
@@ -100,8 +160,10 @@ class SentinelEngine {
         this.sensor.stop();
       } catch (_) {}
     }
-    window.removeEventListener('devicemotion', this.handleDeviceMotion);
-    window.removeEventListener('deviceorientation', this.handleOrientation);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('devicemotion', this.handleDeviceMotion);
+      window.removeEventListener('deviceorientation', this.handleOrientation);
+    }
 
     if (this.watchId !== null && 'geolocation' in navigator) {
       navigator.geolocation.clearWatch(this.watchId);
@@ -120,6 +182,7 @@ class SentinelEngine {
   private handleLinearSensor = () => {
     if (!this.active || !this.sensor) return;
     const { x = 0, y = 0, z = 0 } = this.sensor;
+    this.isHardwareSensorActive = true;
     this.processAcceleration(x, y, z + 9.8);
   };
 
@@ -128,6 +191,7 @@ class SentinelEngine {
     const accel = event.accelerationIncludingGravity || event.acceleration;
     if (!accel) return;
 
+    this.isHardwareSensorActive = true;
     const x = accel.x || 0;
     const y = accel.y || 0;
     const z = (accel.z !== null && accel.z !== undefined) ? accel.z : 9.8;
@@ -142,8 +206,9 @@ class SentinelEngine {
 
     this.currentTelemetry.tilt_angle_deg = Math.round(maxTilt);
 
-    // Rollover detection threshold (> 70 degrees tilt)
-    if (maxTilt > 70) {
+    // Rollover detection threshold based on active vehicle profile
+    const threshold = SENSITIVITY_PROFILES[this.profile].tiltAngleDeg;
+    if (maxTilt >= threshold) {
       this.triggerAlert('rollover', {
         ...this.currentTelemetry,
         anomaly_type: 'rollover',
@@ -160,8 +225,13 @@ class SentinelEngine {
     this.currentTelemetry.accel_z = Math.round(z * 10) / 10;
     this.currentTelemetry.g_force = Math.round(gForce * 100) / 100;
 
-    // Severe Impact Threshold (> 3.8G)
-    if (gForce >= 3.8) {
+    if (gForce > this.peakGForce) {
+      this.peakGForce = gForce;
+    }
+
+    // Impact threshold based on active vehicle profile
+    const impactThreshold = SENSITIVITY_PROFILES[this.profile].impactG;
+    if (gForce >= impactThreshold) {
       this.triggerAlert('impact', {
         ...this.currentTelemetry,
         anomaly_type: 'impact',
@@ -185,8 +255,9 @@ class SentinelEngine {
               const deltaSpeed = this.lastSpeedKmh - speedKmh;
               this.currentTelemetry.delta_speed_kmh = deltaSpeed;
 
-              // Sudden stop / Crash: speed dropped > 35 km/h in under 1.5 seconds
-              if (this.lastSpeedKmh > 35 && speedKmh < 5 && deltaSpeed > 30) {
+              const dropThreshold = SENSITIVITY_PROFILES[this.profile].speedDropKmh;
+              // Sudden crash stop detection
+              if (this.lastSpeedKmh > dropThreshold && speedKmh < 6 && deltaSpeed >= dropThreshold) {
                 this.triggerAlert('sudden_stop', {
                   ...this.currentTelemetry,
                   speed_kmh: speedKmh,
@@ -222,13 +293,14 @@ class SentinelEngine {
   // --- Manual Kinetic Force Testing (for Desktop & Testing) ---
   public setManualGForce(g: number) {
     this.currentTelemetry.g_force = Math.round(g * 100) / 100;
-    this.currentTelemetry.accel_x = Math.round((g * 4.5) * 10) / 10;
-    this.currentTelemetry.accel_y = Math.round((g * 5.2) * 10) / 10;
-    this.currentTelemetry.accel_z = Math.round((g * 6.8) * 10) / 10;
+    this.currentTelemetry.accel_x = Math.round((g * 4.8) * 10) / 10;
+    this.currentTelemetry.accel_y = Math.round((g * 5.4) * 10) / 10;
+    this.currentTelemetry.accel_z = Math.round((g * 6.5) * 10) / 10;
     if (this.telemetryCb) {
       this.telemetryCb({ ...this.currentTelemetry });
     }
-    if (g >= 3.8) {
+    const impactThreshold = SENSITIVITY_PROFILES[this.profile].impactG;
+    if (g >= impactThreshold) {
       this.triggerAlert('impact', this.currentTelemetry);
     }
   }

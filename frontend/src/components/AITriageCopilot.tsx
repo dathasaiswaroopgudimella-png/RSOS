@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   ShieldAlert, CheckCircle2, HeartPulse, Sparkles,
   Share2, MessageSquare, PhoneCall, AlertTriangle,
-  Clock, Stethoscope, Check
+  Clock, Stethoscope, Check, Phone, Siren
 } from 'lucide-react';
 import { ActionPlan, WeatherInfo } from '../types';
 
@@ -35,7 +35,7 @@ export const AITriageCopilot: React.FC<AITriageCopilotProps> = ({ plan, weather,
               <h3 className="text-lg sm:text-xl font-black text-slate-900">
                 Clinical Triage Directive
               </h3>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emergency-50 text-emergency-700 border border-emergency-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emergency-50 text-emergency-700 border border-emergency-200">
                 {plan.severity ? plan.severity.toUpperCase() : 'CRITICAL'}
               </span>
             </div>
@@ -55,7 +55,7 @@ export const AITriageCopilot: React.FC<AITriageCopilotProps> = ({ plan, weather,
       </div>
 
       {/* Primary Life-Saving Directive (Hero Action Box) */}
-      <div className="p-5 rounded-2xl bg-gradient-to-br from-emergency-50 to-red-50/50 border border-emergency-200/80 space-y-2">
+      <div className="p-5 rounded-2xl bg-gradient-to-br from-emergency-50 via-red-50/40 to-white border border-emergency-200 shadow-sm space-y-2">
         <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-emergency-700">
           <ShieldAlert className="w-4 h-4" />
           <span>Priority 1: Immediate Life-Saving Action</span>
@@ -64,10 +64,29 @@ export const AITriageCopilot: React.FC<AITriageCopilotProps> = ({ plan, weather,
           {plan.primary_action}
         </p>
         {plan.secondary_action && (
-          <p className="text-xs sm:text-sm text-slate-600 font-medium pt-1 border-t border-emergency-100">
-            <strong>Next Step: </strong>{plan.secondary_action}
+          <p className="text-xs sm:text-sm text-slate-700 font-medium pt-2 border-t border-emergency-100">
+            <strong className="text-slate-900">Next Step: </strong>{plan.secondary_action}
           </p>
         )}
+      </div>
+
+      {/* Quick 1-Tap Emergency Dispatch Bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <a
+          href="tel:108"
+          className="p-3.5 rounded-2xl bg-emergency-600 hover:bg-emergency-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-emergency-600/20 transition active:scale-95"
+        >
+          <PhoneCall className="w-4 h-4 animate-bounce" />
+          <span>Dial 108 Ambulance Dispatch</span>
+        </a>
+
+        <a
+          href="tel:112"
+          className="p-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-95"
+        >
+          <Siren className="w-4 h-4 text-amber-400" />
+          <span>Dial 112 National Police / Rescue</span>
+        </a>
       </div>
 
       {/* Clinical Rationale & Routing Justification */}
@@ -121,7 +140,7 @@ export const AITriageCopilot: React.FC<AITriageCopilotProps> = ({ plan, weather,
         </div>
       )}
 
-      {/* Recommended Facility Highlight */}
+      {/* Recommended Facility Destination */}
       <div className="p-4 rounded-2xl bg-brand-50/70 border border-brand-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="space-y-0.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-brand-600 block">

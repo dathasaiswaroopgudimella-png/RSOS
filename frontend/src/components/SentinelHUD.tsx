@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Activity, Zap, Gauge, Compass, ShieldAlert,
   Volume2, Play, RefreshCw, AlertOctagon, CheckCircle2,
-  Sliders, ArrowUpRight, Flame, Smartphone, SlidersHorizontal
+  Sliders, ArrowUpRight, Flame, Smartphone, SlidersHorizontal,
+  Bike, Car, Truck, Sparkles
 } from 'lucide-react';
 import { KineticTelemetry } from '../types';
-import { sentinelEngine } from '../services/SentinelEngine';
+import { sentinelEngine, VehicleProfile, SENSITIVITY_PROFILES } from '../services/SentinelEngine';
 import { audioSiren } from '../services/audioSiren';
 import { useHaptics } from '../hooks/useHaptics';
 
@@ -18,14 +19,17 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
   const [isTestingSiren, setIsTestingSiren] = useState(false);
   const [sliderGForce, setSliderGForce] = useState(telemetry.g_force || 1.0);
   const [isPermissionGranted, setIsPermissionGranted] = useState(false);
+  const [activeProfile, setActiveProfile] = useState<VehicleProfile>(sentinelEngine.getVehicleProfile());
   const { triggerSosPattern } = useHaptics();
+
+  const thresholds = SENSITIVITY_PROFILES[activeProfile];
 
   // Normalize G-Force for visual dial (0.5 to 6.0G range)
   const clampedGForce = Math.min(6.0, Math.max(0.5, telemetry.g_force || 1.0));
   const gPercentage = ((clampedGForce - 0.5) / 5.5) * 100;
 
-  const isSevereG = clampedGForce >= 3.8;
-  const isElevatedG = clampedGForce >= 2.2 && clampedGForce < 3.8;
+  const isSevereG = clampedGForce >= thresholds.impactG;
+  const isElevatedG = clampedGForce >= (thresholds.impactG * 0.6) && clampedGForce < thresholds.impactG;
 
   const handleTestSiren = () => {
     if (isTestingSiren) return;
@@ -41,6 +45,11 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
   const handleRequestMotion = async () => {
     const granted = await sentinelEngine.requestMotionPermission();
     setIsPermissionGranted(granted);
+  };
+
+  const handleProfileChange = (p: VehicleProfile) => {
+    setActiveProfile(p);
+    sentinelEngine.setVehicleProfile(p);
   };
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,13 +77,16 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
                 Autonomous Kinetic Sentinel Active
               </span>
               <span className="text-xs text-slate-400 font-mono">60Hz Real-Time Sensor</span>
+              <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-md border border-brand-200">
+                Threshold: {thresholds.impactG}G
+              </span>
             </div>
             
             <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
               Vehicle Kinetic &amp; Accelerometer Monitor
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 max-w-xl">
-              Sentinel continuously tracks true physical 3-axis accelerometer forces, vehicle speed deceleration, and rollover tilt angles to trigger automatic emergency rescue.
+              Sentinel continuously tracks physical 3-axis accelerometer forces, vehicle speed deceleration, and rollover tilt angles to trigger automatic emergency rescue.
             </p>
           </div>
 
@@ -104,6 +116,68 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
 
           </div>
 
+        </div>
+
+        {/* Vehicle Sensitivity Profile Selector */}
+        <div className="mt-5 p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+            <Sliders className="w-4 h-4 text-brand-600" />
+            <span>Vehicle Crash Sensitivity Profile:</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleProfileChange('BIKE')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+                activeProfile === 'BIKE'
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Bike className="w-3.5 h-3.5" />
+              <span>2-Wheeler (3.2G)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleProfileChange('CAR')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+                activeProfile === 'CAR'
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Car className="w-3.5 h-3.5" />
+              <span>Car / Sedan (3.8G)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleProfileChange('TRUCK')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+                activeProfile === 'TRUCK'
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Truck className="w-3.5 h-3.5" />
+              <span>Heavy / Bus (4.8G)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleProfileChange('TEST')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+                activeProfile === 'TEST'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Demo Shake (2.2G)</span>
+            </button>
+          </div>
         </div>
 
         {/* 4 Live Kinetic Metric Tiles */}
@@ -145,7 +219,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
             </div>
 
             <p className="text-[10px] text-slate-400 mt-2">
-              {clampedGForce <= 1.2 ? 'Normal 1.00G Earth Gravity' : isSevereG ? '🚨 Critical Impact Detected (>4.5G)' : 'Elevated Kinetic Force'}
+              {clampedGForce <= 1.2 ? 'Normal 1.00G Earth Gravity' : isSevereG ? `🚨 Critical Impact (>${thresholds.impactG}G)` : 'Elevated Kinetic Force'}
             </p>
           </div>
 
@@ -174,7 +248,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
             </div>
 
             <p className="text-[10px] text-slate-400 mt-2">
-              Δ Speed drop: {telemetry.delta_speed_kmh || 0} km/h
+              Δ Speed drop: {telemetry.delta_speed_kmh || 0} km/h (Crash trigger: &ge;{thresholds.speedDropKmh} km/h)
             </p>
           </div>
 
@@ -198,14 +272,14 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
             <div className="w-full bg-slate-200 rounded-full h-1.5 mt-3 overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-200 ${
-                  (telemetry.tilt_angle_deg || 0) > 70 ? 'bg-emergency-600' : 'bg-brand-600'
+                  (telemetry.tilt_angle_deg || 0) >= thresholds.tiltAngleDeg ? 'bg-emergency-600' : 'bg-brand-600'
                 }`}
                 style={{ width: `${Math.min(100, ((telemetry.tilt_angle_deg || 0) / 90) * 100)}%` }}
               />
             </div>
 
             <p className="text-[10px] text-slate-400 mt-2">
-              {(telemetry.tilt_angle_deg || 0) > 70 ? '🚨 Rollover Threshold Exceeded' : 'Normal Orientation (<70°)'}
+              {(telemetry.tilt_angle_deg || 0) >= thresholds.tiltAngleDeg ? '🚨 Rollover Threshold Exceeded' : `Normal Orientation (<${thresholds.tiltAngleDeg}°)`}
             </p>
           </div>
 

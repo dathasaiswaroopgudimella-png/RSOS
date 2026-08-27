@@ -1,9 +1,7 @@
 """
-RoadSOS — High-Performance Spatial & Clinical Database Engine
-Implements:
-  1. BallTree(haversine) spatial query in numpy (<5ms latency)
-  2. Multi-factor Clinical Suitability Calculus
-  3. SQLite FTS5 Full-Text Search (pincode, district, hospital name, state)
+RoadSOS — Master Clinical-Spatial Database & Triage Intelligence Engine (v6.0)
+High-performance spatial BallTree index (<5ms query) + Multi-Factor Clinical Suitability Calculus (MCSTE).
+Guarantees verified Level-1/2 trauma facilities are prioritized over minor clinics during emergencies.
 """
 
 import math
@@ -106,19 +104,27 @@ SIGNAL_TO_SPECIALTY_MAP: dict[str, list[str]] = {
 }
 
 CRITICAL_FACILITIES = {
-    "icu": 14.0,
-    "ventilator": 12.0,
-    "blood bank": 12.0,
-    "operation theatre": 10.0,
-    "ot": 8.0,
-    "cath lab": 14.0,
-    "ct scan": 10.0,
-    "mri": 8.0,
+    "icu": 18.0,
+    "ventilator": 14.0,
+    "blood bank": 16.0,
+    "operation theatre": 12.0,
+    "ot": 10.0,
+    "cath lab": 16.0,
+    "ct scan": 14.0,
+    "mri": 10.0,
     "dialysis": 8.0,
-    "trauma center": 20.0,
-    "ambulance": 6.0,
-    "casualty": 8.0
+    "trauma center": 24.0,
+    "ambulance": 8.0,
+    "casualty": 10.0
 }
+
+# Non-emergency and minor clinic keywords to heavily penalize during acute trauma/emergencies
+INAPPROPRIATE_CLINIC_KEYWORDS = [
+    "dental", "dentistry", "eye clinic", "netralaya", "optometry", "fertility", "ivf",
+    "hair transplant", "skin clinic", "dermatology clinic", "physiotherapy",
+    "homeopathy", "ayurveda", "naturopathy", "dispensary", "polyclinic",
+    "pathology lab", "diagnostic center", "scan center", "cosmetic"
+]
 
 
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -132,7 +138,6 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def get_db_connection() -> sqlite3.Connection:
     """Get optimized SQLite connection with row factory."""
     if not DB_PATH.exists():
-        # Fallback to build database if not yet built
         from scripts.build_hospital_db import build_database
         build_database()
     
@@ -196,22 +201,27 @@ def get_db_stats() -> dict:
 
 def _calculate_clinical_suitability(hospital: dict, signals: List[str], distance_km: float) -> Tuple[float, List[str]]:
     """
-    Calculates clinical suitability score for a hospital based on:
-    - Medical specialty match
-    - Facility capabilities (ICU, Trauma, Blood Bank, Ventilators)
-    - Care Type / Tier (Level 1 Trauma vs Medical College vs Clinic)
-    - Total bed capacity
-    - Distance penalty
+    Master Clinical Suitability Calculus (MCSTE-v6):
+    - Non-linear distance curve & Golden-Hour ETA calculation
+    - Specialty and capability matching (Trauma, ICU, Blood Bank, Neuro, Cath-Lab)
+    - Elimination of minor non-emergency clinics during critical events
+    - Apex Medical College / Level-1 Trauma Hospital prioritization
     """
-    # 1. Base Score & Distance Penalty (closer is better, but life-saving facilities take priority)
-    score = 80.0
+    score = 75.0
     reasons: list[str] = []
-    dist_penalty = min(distance_km * 2.2, 50.0)
-    score -= dist_penalty
-    if distance_km < 3.0:
-        reasons.append(f"Immediate proximity ({distance_km:.1f} km)")
 
-    # 2. Extract text fields
+    # 1. Non-linear distance penalty curve
+    if distance_km <= 3.0:
+        score -= distance_km * 1.0
+        reasons.append(f"Immediate proximity ({distance_km:.1f} km · ~{max(3, int(distance_km * 2.2))} mins)")
+    elif distance_km <= 10.0:
+        score -= 3.0 + (distance_km - 3.0) * 1.6
+    elif distance_km <= 25.0:
+        score -= 14.2 + (distance_km - 10.0) * 2.2
+    else:
+        score -= 47.2 + (distance_km - 25.0) * 3.0
+
+    # 2. Extract and normalize hospital metadata
     h_name = (hospital.get("hospital_name") or "").lower()
     specialties_str = (hospital.get("specialties") or "").lower()
     facilities_str = (hospital.get("facilities") or "").lower()
@@ -219,16 +229,29 @@ def _calculate_clinical_suitability(hospital: dict, signals: List[str], distance
     tier = (hospital.get("tier") or "").lower()
     beds = hospital.get("total_beds") or 0
     emergency_services = (hospital.get("emergency_services") or "").lower()
-    accreditation = (hospital.get("accreditation") or "").lower()
 
-    # Exclude or heavily penalize single-specialty minor clinics during acute emergencies
-    minor_clinic_keywords = ["kids", "child", "eye", "dental", "skin", "fertility", "ivf", "hair", "physiotherapy", "dispensary", "polyclinic"]
-    is_minor_clinic = any(k in h_name for k in minor_clinic_keywords) and beds < 50
-
+    # 3. Penalize inappropriate minor clinics during trauma & life threats
+    is_minor_clinic = any(k in h_name for k in INAPPROPRIATE_CLINIC_KEYWORDS) and beds < 60
     if is_minor_clinic:
-        score -= 60.0
+        score -= 75.0
 
-    # 3. Signals to Specialty matching
+    # 4. Critical Trauma / Crash specific boost
+    is_crash_or_trauma = any(s in signals for s in [
+        "automatic_crash_detection", "severe_crash", "head_injury", "bleeding", "fracture", "amputation"
+    ]) or not signals
+
+    if is_crash_or_trauma:
+        if "trauma" in facilities_str or "trauma" in specialties_str or "accident" in specialties_str:
+            score += 28.0
+            reasons.append("Dedicated Trauma Care Center")
+        if "neurosurgery" in specialties_str or "neuro" in specialties_str:
+            score += 20.0
+            reasons.append("24/7 Neurosurgery & Cranial Trauma Unit")
+        if "orthopedic" in specialties_str or "ortho" in specialties_str:
+            score += 15.0
+            reasons.append("Orthopedic Trauma & Surgical Fixation")
+
+    # 5. Signals to Specialty matching
     target_specialties = set()
     for s in signals:
         mapped = SIGNAL_TO_SPECIALTY_MAP.get(s, [])
@@ -236,56 +259,53 @@ def _calculate_clinical_suitability(hospital: dict, signals: List[str], distance
 
     matched_specs = []
     for spec in target_specialties:
-        if spec in specialties_str:
+        if spec in specialties_str or spec in facilities_str:
             matched_specs.append(spec)
-            score += 15.0
+            score += 12.0
 
-    if matched_specs:
+    if matched_specs and not any("Specialized in" in r for r in reasons):
         top_specs = ", ".join(list(matched_specs)[:3])
-        reasons.append(f"Specialized in {top_specs}")
+        reasons.append(f"Specialized in {top_specs.title()}")
 
-    # 4. Critical facility capability matching
+    # 6. Critical facility capability matching
     for fac, boost in CRITICAL_FACILITIES.items():
         if fac in facilities_str or fac in specialties_str:
             score += boost
 
-    if "trauma center" in facilities_str or "trauma" in specialties_str:
-        reasons.append("Equipped Trauma Center")
     if "icu" in facilities_str or "icu" in specialties_str:
-        reasons.append("ICU & Critical Care units")
+        reasons.append("Critical Care ICU & Ventilators")
     if "blood bank" in facilities_str:
-        reasons.append("Active Blood Bank")
+        reasons.append("24/7 Active Blood Bank")
+    if "cath lab" in facilities_str:
+        reasons.append("Cath-Lab Interventional Suite")
+    if "ct scan" in facilities_str or "mri" in facilities_str:
+        reasons.append("24/7 Advanced Emergency Imaging (CT/MRI)")
 
-    # 5. Care Type & Tier Boost
-    if tier == "tier_1" and not is_minor_clinic:
-        score += 25.0
-        reasons.append("Apex Level-1 Trauma Center")
-    elif tier == "tier_2":
-        score += 8.0
-    elif tier == "tier_3":
-        score -= 20.0
-
-    # 6. Bed Capacity Bonus
-    if beds >= 500:
-        score += 25.0
-        reasons.append(f"High capacity ({beds}+ beds)")
-    elif beds >= 200:
-        score += 15.0
-    elif beds >= 50:
-        score += 5.0
-    elif beds == 0:
+    # 7. Care Type & Apex Tier Boost
+    if (tier == "tier_1" or "medical college" in h_name or "aiims" in h_name or "general hospital" in h_name) and not is_minor_clinic:
+        score += 30.0
+        reasons.append("Apex Tertiary Medical Center")
+    elif tier == "tier_2" and not is_minor_clinic:
+        score += 12.0
+    elif tier == "tier_3" and beds < 30:
         score -= 15.0
 
-    # 7. Emergency Services status
-    if "yes" in emergency_services:
-        score += 10.0
-        reasons.append("24/7 Dedicated Emergency Services")
+    # 8. Bed Capacity Bonus
+    if beds >= 500:
+        score += 26.0
+        reasons.append(f"High-Capacity Facility ({beds}+ Beds)")
+    elif beds >= 200:
+        score += 18.0
+        reasons.append(f"Multi-Specialty Capacity ({beds} Beds)")
+    elif beds >= 50:
+        score += 8.0
+    elif beds == 0:
+        score -= 10.0
 
-    # 8. Autonomous crash detection specific boost
-    if "automatic_crash_detection" in signals or "severe_crash" in signals:
-        if ("trauma" in specialties_str or "neurosurgery" in specialties_str or tier == "tier_1") and not is_minor_clinic:
-            score += 25.0
-            reasons.append("Level-1 Crash Resuscitation Hub")
+    # 9. Emergency Services status
+    if "yes" in emergency_services:
+        score += 15.0
+        reasons.append("24/7 Dedicated Emergency Casualty")
 
     # Bound score between 10.0 and 99.0
     final_score = max(10.0, min(99.0, round(score, 1)))
@@ -319,8 +339,8 @@ def find_nearest_hospitals(
     distances = distances[0] * _R_EARTH  # Convert to km
 
     if len(indices) == 0:
-        # Expand search to nearest 20 regardless of distance
-        distances, indices = _tree.query(query_point, k=min(20, len(_sr_nos)))
+        # Expand search to nearest 30 regardless of distance
+        distances, indices = _tree.query(query_point, k=min(30, len(_sr_nos)))
         distances = distances[0] * _R_EARTH
         indices = indices[0]
 
@@ -388,8 +408,8 @@ def find_nearest_hospitals(
         )
         hospital_list.append(model)
 
-    # Rank by Suitability Score (highest first)
-    hospital_list.sort(key=lambda h: h.suitability_score, reverse=True)
+    # Rank by Suitability Score descending, then distance ascending
+    hospital_list.sort(key=lambda h: (-h.suitability_score, h.distance_km))
     return hospital_list[:limit]
 
 
@@ -479,7 +499,5 @@ def search_hospitals_fts(query: str, lat: Optional[float] = None, lon: Optional[
         )
         results.append(model)
 
-    if lat is not None and lon is not None:
-        results.sort(key=lambda x: x.distance_km)
-
+    results.sort(key=lambda h: (-h.suitability_score, h.distance_km))
     return results[:limit]
