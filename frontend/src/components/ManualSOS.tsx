@@ -1,15 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  AlertCircle, ShieldAlert, Heart, Zap, Flame,
-  Bone, Activity, Car, Ambulance, Check, Loader2,
-  Stethoscope, Sparkles, MapPin, Search, Building2, Wand2, X
+  ShieldAlert, Activity, Check, Car, Ambulance,
+  FileText, Search, MapPin, X, Wand2, Building2,
+  Sparkles, Compass, AlertTriangle, HeartPulse, Brain,
+  Droplets, Wind, Flame, Bone, Zap, UserX, Stethoscope, LandPlot, MapPinCheck, Loader2
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { getFuzzyLocationSuggestions, LocationPreset } from '../services/FuzzyLocationEngine';
 
 interface ManualSOSProps {
-  onTriggerSOS: (signals: string[], vehicleAvailable: boolean, notes: string, overrideLocation?: { lat: number; lon: number; name: string }) => void;
-  isLoading: boolean;
+  onTriggerSOS: (
+    signals: string[],
+    vehicleAvailable: boolean,
+    notes?: string,
+    overrideLocation?: { lat: number; lon: number; name: string }
+  ) => void;
+  isLoading?: boolean;
 }
 
 interface SymptomOption {
@@ -21,62 +27,78 @@ interface SymptomOption {
   description: string;
 }
 
+export interface LivePlaceSuggestion {
+  name: string;
+  subtext: string;
+  lat: number;
+  lon: number;
+  type: string;
+}
+
 const SYMPTOM_OPTIONS: SymptomOption[] = [
   {
     id: 'severe_crash',
-    label: 'Road Collision / Impact',
+    label: 'Severe Road Collision',
     category: 'Trauma',
     icon: '🚗',
     severity: 'critical',
-    description: 'High-speed vehicular crash, airbag deployment, or pedestrian impact'
+    description: 'Blunt force impact, multi-vehicle rollover, or pedestrian strike'
   },
   {
     id: 'cardiac_arrest',
-    label: 'Cardiac Arrest / Unconscious',
+    label: 'Cardiac Arrest / Unresponsive',
     category: 'Cardiac',
     icon: '❤️',
     severity: 'critical',
-    description: 'Sudden collapse, unresponsive, no pulse, or severe crushing chest pain'
+    description: 'No pulse, not breathing normally, collapsed victim'
+  },
+  {
+    id: 'chest_pain',
+    label: 'Severe Chest Pain / Pressure',
+    category: 'Cardiac',
+    icon: '🫀',
+    severity: 'critical',
+    description: 'Crushing central chest tightness radiating to arm or jaw'
   },
   {
     id: 'stroke',
-    label: 'Stroke (FAST Symptoms)',
+    label: 'Suspected Acute Stroke',
     category: 'Neurological',
     icon: '🧠',
     severity: 'critical',
-    description: 'Facial drooping, one-sided arm weakness, slurred speech'
+    description: 'Facial droop, unilateral arm weakness, slurred speech'
   },
   {
     id: 'head_injury',
-    label: 'Head / Spinal Trauma',
+    label: 'Severe Head / Cranial Trauma',
     category: 'Trauma',
     icon: '🤕',
     severity: 'critical',
-    description: 'Loss of consciousness, concussion, neck pain, or bleeding from ears/nose'
+    description: 'Loss of consciousness, unequal pupils, ear or nose bleed'
   },
   {
     id: 'bleeding',
-    label: 'Severe Hemorrhage',
-    category: 'Bleeding',
+    label: 'Massive External Hemorrhage',
+    category: 'Hemorrhage',
     icon: '🩸',
     severity: 'high',
-    description: 'Active arterial spurting, deep laceration, or major blood loss'
+    description: 'Continuous arterial spurting or heavy uncontrollable blood loss'
   },
   {
     id: 'breathing',
-    label: 'Respiratory Distress',
-    category: 'Pulmonary',
+    label: 'Severe Respiratory Distress',
+    category: 'Respiratory',
     icon: '🫁',
     severity: 'critical',
-    description: 'Severe breathlessness, choking, acute asthma, or cyanosis (blue lips)'
+    description: 'Struggling to breathe, choking, cyanosis (blue lips)'
   },
   {
     id: 'severe_burn',
-    label: 'Severe Burn Injury',
+    label: 'Severe Thermal / Chemical Burn',
     category: 'Burn',
     icon: '🔥',
     severity: 'high',
-    description: 'Extensive fire, boiling liquid, or electrical burn over skin surface'
+    description: 'Deep partial or full-thickness burns covering large body surface'
   },
   {
     id: 'fracture',
@@ -93,23 +115,114 @@ export const ManualSOS: React.FC<ManualSOSProps> = ({ onTriggerSOS, isLoading })
   const [vehicleAvailable, setVehicleAvailable] = useState<boolean>(true);
   const [notes, setNotes] = useState<string>('');
 
-  // Incident Location Override (optional – uses live GPS if not set)
+  // Incident Location Override
   const [locationQuery, setLocationQuery] = useState('');
   const [locationSearching, setLocationSearching] = useState(false);
   const [resolvedLocation, setResolvedLocation] = useState<{ lat: number; lon: number; name: string } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [autocorrectNotice, setAutocorrectNotice] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<LocationPreset[]>([]);
+  const [liveSuggestions, setLiveSuggestions] = useState<LivePlaceSuggestion[]>([]);
+  const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const locationWrapperRef = useRef<HTMLDivElement>(null);
+  const debounceTimerRef = useRef<any>(null);
 
-  // Live typeahead suggestions as user types
+  // Debounced Live OpenStreetMap + Local Preset Query for ALL Indian Places
   useEffect(() => {
-    if (locationQuery.trim().length >= 2) {
-      setSuggestions(getFuzzyLocationSuggestions(locationQuery.trim(), 5));
-    } else {
-      setSuggestions([]);
+    const q = locationQuery.trim();
+    if (q.length < 2) {
+      setLiveSuggestions([]);
+      setIsFetchingSuggestions(false);
+      return;
     }
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    setIsFetchingSuggestions(true);
+
+    debounceTimerRef.current = setTimeout(async () => {
+      const results: LivePlaceSuggestion[] = [];
+
+      // 1. Local matches
+      const localMatches = getFuzzyLocationSuggestions(q, 4);
+      for (const m of localMatches) {
+        results.push({
+          name: m.name,
+          subtext: `${m.city}, ${m.state}`,
+          lat: m.lat,
+          lon: m.lon,
+          type: m.category,
+        });
+      }
+
+      // 2. All-India Live OpenStreetMap query
+      try {
+        const clean = encodeURIComponent(q);
+        const resp = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${clean}&format=jsonv2&addressdetails=1&countrycodes=in&limit=8`,
+          {
+            headers: {
+              'Accept-Language': 'en',
+              'User-Agent': 'RoadSOS-All-India-Place-Search/6.5',
+            },
+          }
+        );
+
+        if (resp.ok) {
+          const items = await resp.json();
+          if (Array.isArray(items)) {
+            for (const item of items) {
+              const addr = item.address || {};
+              const placeName =
+                item.name ||
+                addr.road ||
+                addr.suburb ||
+                addr.town ||
+                addr.village ||
+                addr.city ||
+                item.display_name.split(',')[0];
+
+              const subparts = [
+                addr.suburb,
+                addr.town || addr.village || addr.city,
+                addr.county || addr.state_district,
+                addr.state,
+                addr.postcode,
+              ].filter(Boolean);
+
+              const subtext = subparts.length > 0 ? subparts.join(', ') : item.display_name;
+
+              const isDuplicate = results.some(
+                (r) => Math.abs(r.lat - parseFloat(item.lat)) < 0.01 && Math.abs(r.lon - parseFloat(item.lon)) < 0.01
+              );
+
+              if (!isDuplicate) {
+                results.push({
+                  name: placeName,
+                  subtext: subtext,
+                  lat: parseFloat(item.lat),
+                  lon: parseFloat(item.lon),
+                  type: addr.postcode === q ? 'Pincode' : item.type || 'Town / Locality',
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[ManualSOS Location] Live query error:', e);
+      }
+
+      setLiveSuggestions(results.slice(0, 8));
+      setIsFetchingSuggestions(false);
+    }, 280);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, [locationQuery]);
 
   // Close dropdown on outside click
@@ -123,8 +236,8 @@ export const ManualSOS: React.FC<ManualSOSProps> = ({ onTriggerSOS, isLoading })
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
-  const handleSelectSuggestion = (preset: LocationPreset) => {
-    setResolvedLocation({ lat: preset.lat, lon: preset.lon, name: `${preset.name}, ${preset.city}, ${preset.state}` });
+  const handleSelectSuggestion = (s: LivePlaceSuggestion) => {
+    setResolvedLocation({ lat: s.lat, lon: s.lon, name: `${s.name}, ${s.subtext}` });
     setLocationQuery('');
     setShowSuggestions(false);
     setLocationError(null);
@@ -147,7 +260,7 @@ export const ManualSOS: React.FC<ManualSOSProps> = ({ onTriggerSOS, isLoading })
         }
         setLocationQuery('');
       } else {
-        setLocationError('Could not find this location. Try a nearby landmark, district, or pincode.');
+        setLocationError('Could not find this location. Try a nearby town, landmark, or 6-digit pincode.');
       }
     } catch {
       setLocationError('Location lookup failed. Check your connection.');
@@ -192,7 +305,7 @@ export const ManualSOS: React.FC<ManualSOSProps> = ({ onTriggerSOS, isLoading })
             1-Tap Emergency Response
           </h2>
           <p className="text-xs sm:text-sm text-slate-500">
-            Press the button below to instantly trigger clinical triage across 30,000+ national trauma facilities, calculate estimated response time, and generate life-saving directives.
+            Press the button below to instantly trigger clinical triage across 30,273+ national trauma facilities, calculate estimated response time, and generate life-saving directives.
           </p>
         </div>
 
@@ -208,165 +321,66 @@ export const ManualSOS: React.FC<ManualSOSProps> = ({ onTriggerSOS, isLoading })
             <div className="absolute -inset-3 rounded-full border border-emergency-300/40 pointer-events-none" />
 
             <div className="flex flex-col items-center justify-center space-y-1 z-10">
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-10 h-10 animate-spin" />
-                  <span className="text-xs font-black uppercase tracking-wider">Evaluating...</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-3xl sm:text-4xl font-black tracking-widest uppercase drop-shadow-md">
-                    SOS
-                  </span>
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-emergency-100">
-                    Press to Dispatch
-                  </span>
-                </>
-              )}
+              <span className="text-3xl sm:text-4xl font-black tracking-wider">
+                SOS
+              </span>
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-emergency-100">
+                {isLoading ? 'Triaging...' : 'Dispatch Now'}
+              </span>
             </div>
           </button>
         </div>
 
-        {/* Selected Symptoms Count Badge */}
-        <div className="text-xs text-slate-500 font-medium">
+        {/* Selected Symptoms Indicator */}
+        <div className="relative z-10 flex flex-wrap justify-center items-center gap-2 pt-2">
           {selectedSymptoms.length === 0 ? (
-            <span>⚡ No symptoms selected — will default to <strong>Severe Crash Trauma</strong></span>
-          ) : (
-            <span className="text-emergency-700 font-bold">
-              ✓ {selectedSymptoms.length} Clinical Symptom{selectedSymptoms.length > 1 ? 's' : ''} Active for Triage Ranking
+            <span className="text-xs text-slate-400 italic">
+              Defaulting to Critical Vehicular Crash Protocol. (Select specific symptoms below if known)
             </span>
-          )}
-        </div>
-
-      </div>
-
-      {/* ── Incident Location Override (Fuzzy Search) ─────────────────────── */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-          <MapPin className="w-5 h-5 text-brand-600" />
-          <div>
-            <h3 className="text-sm font-black text-slate-900">Override Incident Location (Optional)</h3>
-            <p className="text-[11px] text-slate-500">
-              Use your live GPS by default, or type any locality, campus, pincode, or landmark — even if misspelled. Auto-corrects instantly.
-            </p>
-          </div>
-        </div>
-
-        {/* Active Resolved Override Badge */}
-        {resolvedLocation && (
-          <div className="flex items-center justify-between gap-2 bg-brand-50 border border-brand-200 rounded-2xl px-4 py-2.5">
-            <div className="flex items-center gap-2 min-w-0">
-              <Check className="w-4 h-4 text-brand-600 shrink-0" />
-              <div className="min-w-0">
-                <span className="text-xs font-black text-brand-800 block truncate">{resolvedLocation.name}</span>
-                <span className="text-[10px] text-brand-600 font-semibold">{resolvedLocation.lat.toFixed(4)}, {resolvedLocation.lon.toFixed(4)} · Overriding live GPS</span>
-              </div>
-            </div>
-            <button type="button" onClick={clearResolvedLocation} className="text-brand-600 hover:text-brand-800 p-1 rounded-lg hover:bg-brand-100 transition shrink-0">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {/* Autocorrect Notice */}
-        {autocorrectNotice && (
-          <div className="flex items-center gap-1.5 text-xs text-brand-700 bg-brand-50 border border-brand-200 px-3 py-1.5 rounded-xl font-medium">
-            <Wand2 className="w-3.5 h-3.5 text-brand-600 shrink-0" />
-            <span>{autocorrectNotice}</span>
-          </div>
-        )}
-
-        {/* Search Input + Dropdown */}
-        {!resolvedLocation && (
-          <div className="relative" ref={locationWrapperRef}>
-            <form onSubmit={handleLocationSearch} className="flex gap-2">
-              <div className="relative flex-grow">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={locationQuery}
-                  onChange={(e) => {
-                    setLocationQuery(e.target.value);
-                    setShowSuggestions(true);
-                    if (locationError) setLocationError(null);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  placeholder="e.g. IIT BHU, Koramangala, Madhapur, Andheri West, 500081..."
-                  className="w-full pl-10 pr-4 py-2.5 text-xs rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={locationSearching || !locationQuery.trim()}
-                className="px-4 py-2.5 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95 shrink-0"
-              >
-                {locationSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                <span>Set</span>
-              </button>
-            </form>
-
-            {/* Live Typeahead Suggestions */}
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl z-50 overflow-hidden divide-y divide-slate-100">
-                <div className="px-3.5 py-2 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Wand2 className="w-3 h-3 text-brand-600" />
-                  <span>Smart Matches:</span>
-                </div>
-                {suggestions.map((s, idx) => (
+          ) : (
+            selectedSymptoms.map((sId) => {
+              const sym = SYMPTOM_OPTIONS.find((s) => s.id === sId);
+              return (
+                <span
+                  key={sId}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-brand-50 text-brand-700 border border-brand-200 animate-fadeIn"
+                >
+                  <span>{sym?.icon}</span>
+                  <span>{sym?.label}</span>
                   <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleSelectSuggestion(s)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-brand-50/60 flex items-center justify-between transition group"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSymptom(sId);
+                    }}
+                    className="hover:text-emergency-600 ml-1"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <Building2 className="w-4 h-4 text-slate-400 group-hover:text-brand-600 transition shrink-0" />
-                      <div>
-                        <span className="text-xs font-bold text-slate-800 group-hover:text-brand-700 transition">{s.name}</span>
-                        <span className="text-[11px] text-slate-400 block">{s.city}, {s.state}</span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 group-hover:bg-brand-100 text-slate-600 group-hover:text-brand-700 transition shrink-0">
-                      {s.category}
-                    </span>
+                    <X className="w-3 h-3" />
                   </button>
-                ))}
-              </div>
-            )}
+                </span>
+              );
+            })
+          )}
+        </div>
 
-            {locationError && (
-              <p className="mt-1.5 text-xs text-emergency-600 font-semibold">{locationError}</p>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Categorized Clinical Symptom Matrix */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-7 space-y-5">
+      {/* Symptoms Matrix & Clinical Context Section */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6 shadow-sm">
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
-          <div>
-            <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
-              <Stethoscope className="w-5 h-5 text-brand-600" />
-              Specify Clinical Symptoms &amp; Trauma Signs
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Stethoscope className="w-4 h-4 text-brand-600" />
+            <h3 className="text-base sm:text-lg font-black text-slate-900">
+              Clinical Symptoms &amp; Trauma Presentation
             </h3>
-            <p className="text-xs text-slate-500">
-              Selecting specific conditions allows our Clinical Suitability Calculus to prioritize specialized hospitals (Cath-Lab, Neuro ICU, Burn Ward, Blood Bank).
-            </p>
           </div>
-          
-          {selectedSymptoms.length > 0 && (
-            <button
-              onClick={() => setSelectedSymptoms([])}
-              className="text-xs text-slate-500 hover:text-slate-800 underline font-medium self-start sm:self-auto"
-            >
-              Clear All
-            </button>
-          )}
+          <p className="text-xs sm:text-sm text-slate-500">
+            Select any observed patient symptoms to route to hospitals with matching specialty readiness (Cath-Lab, Neuro ICU, Trauma Bay).
+          </p>
         </div>
 
         {/* Symptoms Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {SYMPTOM_OPTIONS.map((symptom) => {
             const isSelected = selectedSymptoms.includes(symptom.id);
             return (
@@ -374,30 +388,23 @@ export const ManualSOS: React.FC<ManualSOSProps> = ({ onTriggerSOS, isLoading })
                 key={symptom.id}
                 type="button"
                 onClick={() => toggleSymptom(symptom.id)}
-                className={`group text-left p-4 rounded-2xl border transition-all duration-150 flex flex-col justify-between space-y-3 ${
+                className={`p-4 rounded-2xl border text-left transition-all duration-200 flex items-start gap-3 group ${
                   isSelected
-                    ? 'bg-emergency-50/80 border-emergency-400 ring-2 ring-emergency-400 shadow-sm'
-                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200/80 text-slate-800'
+                    ? 'border-brand-500 bg-brand-50/70 ring-2 ring-brand-500/20 shadow-sm'
+                    : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-white'
                 }`}
               >
-                <div className="flex items-center justify-between w-full">
-                  <span className="text-2xl">{symptom.icon}</span>
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition ${
-                    isSelected
-                      ? 'bg-emergency-600 border-emergency-600 text-white'
-                      : 'border-slate-300 bg-white'
-                  }`}>
-                    {isSelected && <Check className="w-3.5 h-3.5" />}
-                  </div>
+                <div className="text-2xl shrink-0 p-1.5 rounded-xl bg-white shadow-xs border border-slate-100 group-hover:scale-110 transition-transform">
+                  {symptom.icon}
                 </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-900 group-hover:text-emergency-700 transition">
+                <div className="min-w-0 flex-grow">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-brand-600 transition">
                       {symptom.label}
                     </span>
+                    {isSelected && <Check className="w-4 h-4 text-brand-600 shrink-0" />}
                   </div>
-                  <p className="text-[11px] text-slate-500 line-clamp-2">
+                  <p className="text-[11px] text-slate-500 mt-1 leading-snug">
                     {symptom.description}
                   </p>
                 </div>
@@ -406,60 +413,177 @@ export const ManualSOS: React.FC<ManualSOSProps> = ({ onTriggerSOS, isLoading })
           })}
         </div>
 
-        {/* Vehicle & Transport Availability Selector */}
-        <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* Transport Mode & Situation Notes */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
           
-          <div className="space-y-1">
-            <span className="text-xs font-bold text-slate-800 block">
-              Transport Availability:
-            </span>
-            <span className="text-[11px] text-slate-500">
-              Does the victim or bystander have a vehicle for immediate private transit?
-            </span>
+          {/* Transport Availability Toggle */}
+          <div className="space-y-2.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+              Patient Transport Capability
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setVehicleAvailable(true)}
+                className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition ${
+                  vehicleAvailable
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold ring-2 ring-emerald-500/20'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Car className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div>
+                  <span className="text-xs block font-bold">Private Vehicle</span>
+                  <span className="text-[10px] text-slate-500">Immediate direct drive</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVehicleAvailable(false)}
+                className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition ${
+                  !vehicleAvailable
+                    ? 'border-emergency-500 bg-emergency-50 text-emergency-900 font-bold ring-2 ring-emergency-500/20'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Ambulance className="w-4 h-4 text-emergency-600 shrink-0" />
+                <div>
+                  <span className="text-xs block font-bold">Ambulance 108</span>
+                  <span className="text-[10px] text-slate-500">Wait for rescue dispatch</span>
+                </div>
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setVehicleAvailable(true)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                vehicleAvailable
-                  ? 'bg-brand-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              <Car className="w-4 h-4" />
-              <span>Vehicle Available</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setVehicleAvailable(false)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                !vehicleAvailable
-                  ? 'bg-emergency-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              <Ambulance className="w-4 h-4" />
-              <span>Ambulance Urgent</span>
-            </button>
+          {/* Incident Situation Notes */}
+          <div className="space-y-2.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+              Incident Situation Notes (Optional)
+            </label>
+            <div className="relative">
+              <FileText className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. 2 victims, pedestrian hit, highway milestone 42, trapped..."
+                className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
+              />
+            </div>
           </div>
 
         </div>
 
-        {/* Additional Notes */}
-        <div className="pt-3 border-t border-slate-100 space-y-2">
-          <label className="text-xs font-bold text-slate-800 block">
-            Additional Notes (Optional):
+        {/* Location Override Search Box with All-India Live Typeahead Dropdown */}
+        <div className="pt-4 border-t border-slate-100 space-y-2.5" ref={locationWrapperRef}>
+          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-brand-600" />
+              Incident Location Override (Optional — Defaults to active GPS)
+            </span>
+            {resolvedLocation && (
+              <button
+                type="button"
+                onClick={clearResolvedLocation}
+                className="text-[11px] font-semibold text-emergency-600 hover:underline flex items-center gap-1"
+              >
+                <X className="w-3 h-3" />
+                Reset to live GPS
+              </button>
+            )}
           </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. 3 victims, bike crash near highway overpass, one unresponsive..."
-            rows={2}
-            className="w-full px-3.5 py-2.5 text-xs rounded-2xl bg-slate-50 border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 resize-none transition"
-          />
+
+          {resolvedLocation ? (
+            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs font-medium text-emerald-800">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Override Active: <strong>{resolvedLocation.name}</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={clearResolvedLocation}
+                className="text-emerald-700 hover:text-emerald-900 text-xs font-bold"
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <form onSubmit={handleLocationSearch} className="flex gap-2">
+                <div className="relative flex-grow">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={locationQuery}
+                    onFocus={() => setShowSuggestions(true)}
+                    onChange={(e) => {
+                      setLocationQuery(e.target.value);
+                      setShowSuggestions(true);
+                      if (locationError) setLocationError(null);
+                    }}
+                    placeholder="Search ANY town, village, mandal, or 6-digit pincode across India..."
+                    className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
+                  />
+                  {isFetchingSuggestions && (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={locationSearching || !locationQuery.trim()}
+                  className="px-4 py-2.5 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition active:scale-95 shrink-0"
+                >
+                  {locationSearching ? 'Searching...' : 'Set Spot'}
+                </button>
+              </form>
+
+              {/* Live Dropdown for Manual SOS */}
+              {showSuggestions && liveSuggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-60 overflow-y-auto animate-fadeIn">
+                  <div className="px-3.5 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-brand-700">
+                      <MapPinCheck className="w-3.5 h-3.5 text-brand-600" />
+                      Live Matches across India:
+                    </span>
+                  </div>
+                  {liveSuggestions.map((s, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSelectSuggestion(s)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-brand-50/70 flex items-center justify-between transition group"
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <LandPlot className="w-4 h-4 text-slate-400 group-hover:text-brand-600 transition shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-slate-900 group-hover:text-brand-700 transition block truncate">
+                            {s.name}
+                          </span>
+                          <span className="text-[10px] text-slate-500 block truncate">
+                            {s.subtext}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 group-hover:bg-brand-100 text-slate-600 group-hover:text-brand-700 transition shrink-0 ml-2">
+                        {s.type}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {autocorrectNotice && (
+            <div className="text-xs text-brand-700 bg-brand-50 border border-brand-200 px-3 py-1.5 rounded-xl font-medium">
+              {autocorrectNotice}
+            </div>
+          )}
+
+          {locationError && (
+            <p className="text-xs text-emergency-600 font-semibold">{locationError}</p>
+          )}
         </div>
 
       </div>

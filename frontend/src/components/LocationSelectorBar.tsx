@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Search, Compass, Check, Loader2, Sparkles, Crosshair, Wand2, Building2, LandPlot } from 'lucide-react';
+import { MapPin, Search, Compass, Check, Loader2, Sparkles, Crosshair, Wand2, Building2, LandPlot, MapPinCheck } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { getFuzzyLocationSuggestions, LocationPreset } from '../services/FuzzyLocationEngine';
 
@@ -11,6 +11,14 @@ interface LocationSelectorBarProps {
   onLocationSelect: (lat: number, lon: number, addressName: string) => void;
   onRefreshGps: () => void;
   isGpsLocating?: boolean;
+}
+
+export interface LivePlaceSuggestion {
+  name: string;
+  subtext: string;
+  lat: number;
+  lon: number;
+  type: string;
 }
 
 const POPULAR_METROS = [
@@ -41,18 +49,109 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [autocorrectNotice, setAutocorrectNotice] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<LocationPreset[]>([]);
+  const [liveSuggestions, setLiveSuggestions] = useState<LivePlaceSuggestion[]>([]);
+  const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const debounceTimerRef = useRef<any>(null);
 
-  // Update suggestions on search input change
+  // Debounced Live OpenStreetMap + Local Preset Query for ALL Indian Towns, Villages & Pincodes
   useEffect(() => {
-    if (searchQuery.trim().length >= 2) {
-      const matched = getFuzzyLocationSuggestions(searchQuery.trim(), 5);
-      setSuggestions(matched);
-    } else {
-      setSuggestions([]);
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setLiveSuggestions([]);
+      setIsFetchingSuggestions(false);
+      return;
     }
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    setIsFetchingSuggestions(true);
+
+    debounceTimerRef.current = setTimeout(async () => {
+      const results: LivePlaceSuggestion[] = [];
+
+      // 1. Check local fuzzy presets first for instant response
+      const localMatches = getFuzzyLocationSuggestions(q, 4);
+      for (const m of localMatches) {
+        results.push({
+          name: m.name,
+          subtext: `${m.city}, ${m.state}`,
+          lat: m.lat,
+          lon: m.lon,
+          type: m.category,
+        });
+      }
+
+      // 2. Query Live OpenStreetMap Nominatim for ALL Indian places (towns, mandals, taluks, villages, pincodes)
+      try {
+        const clean = encodeURIComponent(q);
+        const resp = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${clean}&format=jsonv2&addressdetails=1&countrycodes=in&limit=8`,
+          {
+            headers: {
+              'Accept-Language': 'en',
+              'User-Agent': 'RoadSOS-All-India-Place-Search/6.5',
+            },
+          }
+        );
+
+        if (resp.ok) {
+          const items = await resp.json();
+          if (Array.isArray(items)) {
+            for (const item of items) {
+              const addr = item.address || {};
+              const placeName =
+                item.name ||
+                addr.road ||
+                addr.suburb ||
+                addr.town ||
+                addr.village ||
+                addr.city ||
+                item.display_name.split(',')[0];
+
+              const subparts = [
+                addr.suburb,
+                addr.town || addr.village || addr.city,
+                addr.county || addr.state_district,
+                addr.state,
+                addr.postcode,
+              ].filter(Boolean);
+
+              const subtext = subparts.length > 0 ? subparts.join(', ') : item.display_name;
+
+              // Avoid duplicates
+              const isDuplicate = results.some(
+                (r) => Math.abs(r.lat - parseFloat(item.lat)) < 0.01 && Math.abs(r.lon - parseFloat(item.lon)) < 0.01
+              );
+
+              if (!isDuplicate) {
+                results.push({
+                  name: placeName,
+                  subtext: subtext,
+                  lat: parseFloat(item.lat),
+                  lon: parseFloat(item.lon),
+                  type: addr.postcode === q ? 'Pincode' : item.type || 'Town / Locality',
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[LocationSearch] Live query error:', e);
+      }
+
+      setLiveSuggestions(results.slice(0, 8));
+      setIsFetchingSuggestions(false);
+    }, 280);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, [searchQuery]);
 
   // Close dropdown on outside click
@@ -66,8 +165,8 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSelectPreset = (preset: LocationPreset) => {
-    onLocationSelect(preset.lat, preset.lon, `${preset.name}, ${preset.city}, ${preset.state}`);
+  const handleSelectSuggestion = (s: LivePlaceSuggestion) => {
+    onLocationSelect(s.lat, s.lon, `${s.name}, ${s.subtext}`);
     setSearchQuery('');
     setShowSuggestions(false);
     setSearchError(null);
@@ -146,7 +245,7 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
         </button>
       </div>
 
-      {/* Search Input Bar with Fuzzy Autocorrection & Suggestions */}
+      {/* Search Input Bar with All-India Live Typeahead Dropdown */}
       <div className="relative">
         <form onSubmit={handleSearch} className="relative flex flex-col sm:flex-row items-stretch gap-2">
           <div className="relative flex-grow">
@@ -160,9 +259,12 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
                 setShowSuggestions(true);
                 if (searchError) setSearchError(null);
               }}
-              placeholder="Search ANY locality, town, college, campus, or landmark (e.g. IIT BHU, Koramangala, Madhapur, Andheri)..."
+              placeholder="Search ANY town, village, mandal, campus, or 6-digit pincode across India (e.g. 500034, Lanka Varanasi, Koramangala)..."
               className="w-full pl-10 pr-4 py-3 text-xs sm:text-sm rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition"
             />
+            {isFetchingSuggestions && (
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+            )}
           </div>
           <button
             type="submit"
@@ -174,33 +276,36 @@ export const LocationSelectorBar: React.FC<LocationSelectorBarProps> = ({
           </button>
         </form>
 
-        {/* Live Typeahead Autocomplete Dropdown */}
-        {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl z-50 overflow-hidden divide-y divide-slate-100">
-            <div className="px-3.5 py-2 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Wand2 className="w-3 h-3 text-brand-600" />
-              <span>Smart Nearest Matches (Click to select):</span>
+        {/* Live Typeahead Autocomplete Dropdown for ALL Indian Towns, Villages & Pincodes */}
+        {showSuggestions && liveSuggestions.length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto animate-fadeIn">
+            <div className="px-3.5 py-2 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-brand-700">
+                <MapPinCheck className="w-3.5 h-3.5 text-brand-600" />
+                Live Matching Towns &amp; Places across India ({liveSuggestions.length}):
+              </span>
+              <span className="text-[10px] text-slate-400">Click to Select</span>
             </div>
-            {suggestions.map((s, idx) => (
+            {liveSuggestions.map((s, idx) => (
               <button
                 key={idx}
                 type="button"
-                onClick={() => handleSelectPreset(s)}
-                className="w-full text-left px-4 py-2.5 hover:bg-brand-50/60 flex items-center justify-between transition group"
+                onClick={() => handleSelectSuggestion(s)}
+                className="w-full text-left px-4 py-3 hover:bg-brand-50/70 flex items-center justify-between transition group"
               >
-                <div className="flex items-center gap-2.5">
-                  <Building2 className="w-4 h-4 text-slate-400 group-hover:text-brand-600 transition" />
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 group-hover:text-brand-700 transition">
+                <div className="flex items-start gap-3 min-w-0">
+                  <LandPlot className="w-4 h-4 text-slate-400 group-hover:text-brand-600 transition shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <span className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-brand-700 transition block truncate">
                       {s.name}
                     </span>
-                    <span className="text-[11px] text-slate-400 block">
-                      {s.city}, {s.state}
+                    <span className="text-[11px] text-slate-500 block truncate">
+                      {s.subtext}
                     </span>
                   </div>
                 </div>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 group-hover:bg-brand-100 text-slate-600 group-hover:text-brand-700 transition">
-                  {s.category}
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 group-hover:bg-brand-100 text-slate-600 group-hover:text-brand-700 transition shrink-0 ml-2">
+                  {s.type}
                 </span>
               </button>
             ))}

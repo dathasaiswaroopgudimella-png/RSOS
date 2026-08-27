@@ -225,28 +225,89 @@ export default function App() {
         {state === 'IDLE' && (
           <div className="space-y-6 animate-fadeIn">
             
-            {/* Autonomous Sentinel Telemetry HUD (Rendered when in Automatic Mode) */}
+            {/* Mode 1: Autonomous Sentinel Cockpit (Automatic Mode) */}
             {mode === 'AUTOMATIC' && (
-              <SentinelHUD
-                telemetry={telemetry}
-                isActive={true}
-              />
+              <div className="space-y-6">
+                
+                {/* Sentinel Cockpit Header Banner */}
+                <div className="p-5 sm:p-6 rounded-3xl bg-slate-900 text-white border border-slate-800 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0">
+                      <Radio className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          Autonomous Sentinel Cockpit
+                        </span>
+                        <span className="text-xs text-slate-400 font-mono">60Hz Real-Time Sensor Stream</span>
+                      </div>
+                      <h2 className="text-lg sm:text-xl font-black text-white mt-0.5">
+                        Kinetic Telemetry &amp; Crash Decision Intelligence
+                      </h2>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => executeEmergencyTriage(['automatic_crash_detection', 'impact'], true, telemetry, 'Manual Instant Crash Override', lat, lon)}
+                    className="px-5 py-3 rounded-2xl bg-emergency-600 hover:bg-emergency-700 text-white text-xs font-black transition active:scale-95 shadow-md shadow-emergency-600/30 flex items-center gap-2 shrink-0 self-start sm:self-auto"
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                    <span>Trigger Crash Emergency</span>
+                  </button>
+                </div>
+
+                <SentinelHUD
+                  telemetry={telemetry}
+                  isActive={true}
+                />
+              </div>
             )}
 
-            {/* Manual Triage Section */}
-            <ManualSOS
-              onTriggerSOS={(signals, vehicle, notes, overrideLoc) => {
-                const useLat = overrideLoc ? overrideLoc.lat : lat;
-                const useLon = overrideLoc ? overrideLoc.lon : lon;
-                if (overrideLoc) {
-                  setLat(overrideLoc.lat);
-                  setLon(overrideLoc.lon);
-                  setAddressName(overrideLoc.name);
-                }
-                executeEmergencyTriage(signals, vehicle, undefined, notes, useLat, useLon);
-              }}
-              isLoading={isLoading}
-            />
+            {/* Mode 2: Standard / Normal Medical Triage Mode */}
+            {mode === 'MANUAL' && (
+              <div className="space-y-6">
+                
+                {/* Standard Mode Header Banner */}
+                <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-brand-50 text-brand-700 flex items-center justify-center border border-brand-200 shrink-0">
+                      <Activity className="w-6 h-6 text-brand-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-800 border border-brand-200">
+                          Standard Clinical Triage
+                        </span>
+                        <span className="text-xs text-slate-400">Golden-Hour Medical Routing</span>
+                      </div>
+                      <h2 className="text-lg sm:text-xl font-black text-slate-900 mt-0.5">
+                        Direct Medical SOS &amp; Specialized Hospital Dispatch
+                      </h2>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-200 shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="font-semibold">30,273 National Facilities Ready</span>
+                  </div>
+                </div>
+
+                <ManualSOS
+                  onTriggerSOS={(signals, vehicle, notes, overrideLoc) => {
+                    const useLat = overrideLoc ? overrideLoc.lat : lat;
+                    const useLon = overrideLoc ? overrideLoc.lon : lon;
+                    if (overrideLoc) {
+                      setLat(overrideLoc.lat);
+                      setLon(overrideLoc.lon);
+                      setAddressName(overrideLoc.name);
+                    }
+                    executeEmergencyTriage(signals, vehicle, undefined, notes, useLat, useLon);
+                  }}
+                  isLoading={isLoading}
+                />
+              </div>
+            )}
 
           </div>
         )}
