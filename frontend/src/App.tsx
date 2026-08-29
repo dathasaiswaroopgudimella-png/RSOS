@@ -47,20 +47,10 @@ export default function App() {
   const [isContactsOpen, setIsContactsOpen] = useState<boolean>(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
 
-  // 1. Resolve initial location via Instant IP Pre-fill + Browser GPS Refinement
+  // 1. Resolve initial location via High-Accuracy Satellite GPS + Cell IP Fallback
   const resolveLocation = useCallback(async () => {
     setIsGpsLocating(true);
 
-    // Instant IP detection first (Zero-delay location resolution)
-    ApiService.getIpLocation().then((ipLoc) => {
-      if (ipLoc) {
-        setLat((prev) => (prev === 17.4319 ? ipLoc.lat : prev));
-        setLon((prev) => (prev === 78.4073 ? ipLoc.lon : prev));
-        setAddressName((prev) => (prev.includes('Jubilee Hills') ? ipLoc.display_name : prev));
-      }
-    }).catch((e) => console.warn('[Location] Pre-fill IP failed:', e));
-
-    // Browser High-Accuracy GPS
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
@@ -75,18 +65,24 @@ export default function App() {
           setAddressName(humanName);
         },
         async (err) => {
-          console.warn('[GPS] Browser GPS unavailable, relying on IP location:', err.message);
+          console.warn('[GPS] Satellite GPS unavailable or timed out, falling back to network IP:', err.message);
+          setIsGpsLocating(false);
           const ipLoc = await ApiService.getIpLocation();
           if (ipLoc) {
             setLat(ipLoc.lat);
             setLon(ipLoc.lon);
-            setAddressName(ipLoc.display_name);
+            setAddressName(`${ipLoc.display_name} (Network IP Estimated)`);
           }
-          setIsGpsLocating(false);
         },
-        { enableHighAccuracy: true, timeout: 6000 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     } else {
+      const ipLoc = await ApiService.getIpLocation();
+      if (ipLoc) {
+        setLat(ipLoc.lat);
+        setLon(ipLoc.lon);
+        setAddressName(`${ipLoc.display_name} (Network IP Estimated)`);
+      }
       setIsGpsLocating(false);
     }
   }, []);

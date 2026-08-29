@@ -3,7 +3,7 @@ import {
   Activity, Zap, Gauge, Compass, ShieldAlert,
   Volume2, Play, RefreshCw, AlertOctagon, CheckCircle2,
   Sliders, ArrowUpRight, Flame, Smartphone, SlidersHorizontal,
-  Bike, Car, Truck, Sparkles
+  Bike, Car, Truck, Sparkles, Navigation, RotateCcw
 } from 'lucide-react';
 import { KineticTelemetry } from '../types';
 import { sentinelEngine, VehicleProfile, SENSITIVITY_PROFILES } from '../services/SentinelEngine';
@@ -19,6 +19,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
   const [isTestingSiren, setIsTestingSiren] = useState(false);
   const [sliderGForce, setSliderGForce] = useState(telemetry.g_force || 1.0);
   const [isPermissionGranted, setIsPermissionGranted] = useState(false);
+  const [isSimulatingSpeed, setIsSimulatingSpeed] = useState(false);
   const [activeProfile, setActiveProfile] = useState<VehicleProfile>(sentinelEngine.getVehicleProfile());
   const { triggerSosPattern } = useHaptics();
 
@@ -29,7 +30,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
   const gPercentage = ((clampedGForce - 0.5) / 5.5) * 100;
 
   const isSevereG = clampedGForce >= thresholds.impactG;
-  const isElevatedG = clampedGForce >= (thresholds.impactG * 0.6) && clampedGForce < thresholds.impactG;
+  const isElevatedG = clampedGForce >= (thresholds.impactG * 0.65) && clampedGForce < thresholds.impactG;
 
   const handleTestSiren = () => {
     if (isTestingSiren) return;
@@ -42,9 +43,10 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
     }, 2500);
   };
 
-  const handleRequestMotion = async () => {
+  const handleCalibrateSensors = async () => {
     const granted = await sentinelEngine.requestMotionPermission();
     setIsPermissionGranted(granted);
+    sentinelEngine.calibrateSensors();
   };
 
   const handleProfileChange = (p: VehicleProfile) => {
@@ -56,6 +58,16 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
     const val = parseFloat(e.target.value);
     setSliderGForce(val);
     sentinelEngine.setManualGForce(val);
+  };
+
+  const handleSetSpeed = (kmh: number) => {
+    setIsSimulatingSpeed(true);
+    sentinelEngine.setSimulatedSpeed(kmh);
+  };
+
+  const handleStopSpeed = () => {
+    setIsSimulatingSpeed(false);
+    sentinelEngine.stopSpeedSimulation();
   };
 
   return (
@@ -76,9 +88,9 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                 Autonomous Kinetic Sentinel Active
               </span>
-              <span className="text-xs text-slate-400 font-mono">60Hz Real-Time Sensor</span>
-              <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-md border border-brand-200">
-                Threshold: {thresholds.impactG}G
+              <span className="text-xs text-slate-400 font-mono">60Hz Linear IMU Filter</span>
+              <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-md border border-brand-200">
+                Crash Threshold: {thresholds.impactG}G
               </span>
             </div>
             
@@ -86,19 +98,19 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
               Vehicle Kinetic &amp; Accelerometer Monitor
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 max-w-xl">
-              Sentinel continuously tracks physical 3-axis accelerometer forces, vehicle speed deceleration, and rollover tilt angles to trigger automatic emergency rescue.
+              Sentinel isolates linear dynamic acceleration from baseline Earth gravity (alpha=0.88), tracks GPS velocity, and relative rollover deviation to detect real collisions.
             </p>
           </div>
 
-          {/* Right Actions: Sensor Permissions & Siren Test */}
+          {/* Right Actions: Sensor Permissions, Calibration & Siren Test */}
           <div className="flex flex-wrap items-center gap-2">
             
             <button
-              onClick={handleRequestMotion}
-              className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200"
+              onClick={handleCalibrateSensors}
+              className="px-3.5 py-2.5 rounded-2xl bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold transition flex items-center gap-1.5 border border-brand-200"
             >
-              <Smartphone className="w-3.5 h-3.5 text-brand-600" />
-              <span>{isPermissionGranted ? 'Sensor Calibrated ✓' : 'Calibrate Mobile Sensor'}</span>
+              <RotateCcw className="w-3.5 h-3.5 text-brand-600" />
+              <span>Calibrate Baseline Sensors</span>
             </button>
 
             <button
@@ -136,7 +148,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
               }`}
             >
               <Bike className="w-3.5 h-3.5" />
-              <span>2-Wheeler (3.2G)</span>
+              <span>2-Wheeler (3.8G)</span>
             </button>
 
             <button
@@ -149,7 +161,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
               }`}
             >
               <Car className="w-3.5 h-3.5" />
-              <span>Car / Sedan (3.8G)</span>
+              <span>Car / Sedan (4.2G)</span>
             </button>
 
             <button
@@ -162,7 +174,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
               }`}
             >
               <Truck className="w-3.5 h-3.5" />
-              <span>Heavy / Bus (4.8G)</span>
+              <span>Heavy Commercial (5.0G)</span>
             </button>
 
             <button
@@ -175,7 +187,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Demo Shake (2.2G)</span>
+              <span>Demo Test (3.0G)</span>
             </button>
           </div>
         </div>
@@ -219,7 +231,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
             </div>
 
             <p className="text-[10px] text-slate-400 mt-2">
-              {clampedGForce <= 1.2 ? 'Normal 1.00G Earth Gravity' : isSevereG ? `🚨 Critical Impact (>${thresholds.impactG}G)` : 'Elevated Kinetic Force'}
+              {clampedGForce <= 1.3 ? 'Normal 1.00G Resting Force' : isSevereG ? `🚨 Crash Threshold Exceeded (>${thresholds.impactG}G)` : 'Dynamic Motion Detected'}
             </p>
           </div>
 
@@ -248,7 +260,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
             </div>
 
             <p className="text-[10px] text-slate-400 mt-2">
-              Δ Speed drop: {telemetry.delta_speed_kmh || 0} km/h (Crash trigger: &ge;{thresholds.speedDropKmh} km/h)
+              {isSimulatingSpeed ? '🧪 Simulated Driving Speed' : `Live Satellite Speed (${telemetry.delta_speed_kmh || 0} km/h drop)`}
             </p>
           </div>
 
@@ -257,9 +269,9 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
             <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1">
               <span className="flex items-center gap-1.5">
                 <Compass className="w-3.5 h-3.5 text-brand-600" />
-                Rollover Tilt Angle
+                Relative Tilt Angle
               </span>
-              <span className="font-mono text-[10px] text-slate-400">Pitch/Roll</span>
+              <span className="font-mono text-[10px] text-slate-400">Deviation</span>
             </div>
 
             <div className="flex items-baseline gap-1 mt-2">
@@ -279,7 +291,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
             </div>
 
             <p className="text-[10px] text-slate-400 mt-2">
-              {(telemetry.tilt_angle_deg || 0) >= thresholds.tiltAngleDeg ? '🚨 Rollover Threshold Exceeded' : `Normal Orientation (<${thresholds.tiltAngleDeg}°)`}
+              {(telemetry.tilt_angle_deg || 0) >= thresholds.tiltAngleDeg ? '🚨 Rollover Threshold Exceeded' : `Calibrated Resting Pitch/Roll (<${thresholds.tiltAngleDeg}°)`}
             </p>
           </div>
 
@@ -288,7 +300,7 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
             <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1">
               <span className="flex items-center gap-1.5">
                 <Zap className="w-3.5 h-3.5 text-brand-600" />
-                3-Axis Accelerometer
+                Linear Dynamic Vector
               </span>
               <span className="font-mono text-[10px] text-slate-400">m/s²</span>
             </div>
@@ -304,151 +316,126 @@ export const SentinelHUD: React.FC<SentinelHUDProps> = ({ telemetry, isActive })
               </div>
               <div className="bg-white p-1.5 rounded-lg border border-slate-200">
                 <span className="text-[10px] text-slate-400 block font-sans">Az</span>
-                <span className="text-xs font-bold text-slate-800">{telemetry.accel_z || 9.8}</span>
+                <span className="text-xs font-bold text-slate-800">{telemetry.accel_z || 0}</span>
               </div>
             </div>
 
-            <p className="text-[10px] text-slate-400 mt-2 text-center">
-              Tri-axial physical shock vector
+            <p className="text-[10px] text-slate-400 mt-2">
+              Earth gravity isolated (0.0 m/s² dynamic baseline)
             </p>
           </div>
 
         </div>
 
-        {/* Desktop Kinetic Force Tester Slider */}
-        <div className="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-slate-700 flex items-center gap-1.5">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-brand-600" />
-              Manual Kinetic Force Throttle (Interactive Test Control):
-            </span>
-            <span className="font-mono font-black text-brand-700 bg-brand-50 px-2 py-0.5 rounded-md border border-brand-200">
-              {sliderGForce.toFixed(2)}G
-            </span>
+        {/* Live Driving Speed Simulator Studio */}
+        <div className="mt-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Navigation className="w-4 h-4 text-brand-600" />
+              <span className="text-xs font-bold text-slate-800">Vehicle Driving Speed Simulator (Test Velocity &amp; Sudden Braking):</span>
+            </div>
+            {isSimulatingSpeed && (
+              <button
+                onClick={handleStopSpeed}
+                className="text-[11px] font-bold text-emergency-600 hover:underline"
+              >
+                Reset to GPS
+              </button>
+            )}
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-slate-400 font-mono">1.0G (Rest)</span>
-            <input
-              type="range"
-              min="1.0"
-              max="6.0"
-              step="0.1"
-              value={sliderGForce}
-              onChange={handleSliderChange}
-              className="flex-grow h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emergency-600"
-            />
-            <span className="text-[10px] text-emergency-600 font-bold font-mono">6.0G (Severe Crash)</span>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleSetSpeed(45)}
+              className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition"
+            >
+              🚗 City Drive (45 km/h)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetSpeed(80)}
+              className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition"
+            >
+              🛣️ Highway (80 km/h)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetSpeed(110)}
+              className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition"
+            >
+              🏎️ Express (110 km/h)
+            </button>
+            <button
+              type="button"
+              onClick={() => sentinelEngine.simulateSuddenStop()}
+              className="px-3.5 py-1.5 rounded-xl bg-emergency-50 hover:bg-emergency-100 border border-emergency-200 text-xs font-bold text-emergency-700 transition"
+            >
+              🚨 Sudden Crash Deceleration (80 → 0 km/h)
+            </button>
           </div>
         </div>
 
-      </div>
-
-      {/* Kinetic Crash Simulation Studio */}
-      <div className="bg-gradient-to-br from-slate-50 to-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
-        
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
-          <div>
-            <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-2">
-              <Flame className="w-4 h-4 text-emergency-600" />
-              Kinetic Crash Simulation Studio
-            </h3>
-            <p className="text-xs text-slate-500">
-              Click any scenario to simulate a severe kinetic collision anomaly and test the 30-second emergency dispatch countdown.
-            </p>
+        {/* Manual Kinetic Throttle Slider for Precise Calibration Testing */}
+        <div className="mt-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-brand-600" />
+              <span>Manual Kinetic Force Throttle Slider:</span>
+            </div>
+            <span className="font-mono text-brand-700 text-sm">{sliderGForce.toFixed(2)}G</span>
           </div>
-          <span className="text-[11px] font-bold text-brand-600 uppercase tracking-wider px-2.5 py-1 rounded-full bg-brand-50 border border-brand-200 self-start sm:self-auto">
-            Live Testing Studio
-          </span>
+
+          <input
+            type="range"
+            min="1.0"
+            max="6.0"
+            step="0.05"
+            value={sliderGForce}
+            onChange={handleSliderChange}
+            className="w-full accent-brand-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+          />
+
+          <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+            <span>1.00G (Rest)</span>
+            <span>2.50G (Harsh Bump)</span>
+            <span className="text-amber-600 font-bold">{thresholds.impactG}G (Threshold)</span>
+            <span className="text-emergency-600 font-bold">6.00G (Severe Impact)</span>
+          </div>
         </div>
 
-        {/* 4 Interactive Simulation Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          
-          {/* Simulation 1: High-G Collision Impact */}
-          <button
-            onClick={() => sentinelEngine.simulateImpact(5.82)}
-            className="group text-left p-4 rounded-2xl bg-white hover:bg-emergency-50/50 border border-slate-200 hover:border-emergency-300 shadow-sm hover:shadow-md transition-all duration-200 active:scale-95 space-y-2"
-          >
-            <div className="flex items-center justify-between">
-              <span className="w-8 h-8 rounded-xl bg-emergency-100 text-emergency-700 flex items-center justify-center font-bold text-xs group-hover:scale-110 transition">
-                💥
-              </span>
-              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-emergency-600 transition" />
-            </div>
-            <div>
-              <h4 className="text-xs font-black text-slate-900 group-hover:text-emergency-700 transition">
-                High-Speed Collision
-              </h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Simulates a <strong>5.82G</strong> vehicle impact force.
-              </p>
-            </div>
-          </button>
+        {/* 1-Click Crash Scenario Triggers */}
+        <div className="mt-6 pt-5 border-t border-slate-100">
+          <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+            Autonomous Crash Simulation Scenarios (Instant Rescue Verification):
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            
+            <button
+              onClick={() => sentinelEngine.simulateImpact(5.82)}
+              className="px-4 py-3 rounded-2xl bg-white hover:bg-emergency-50 text-slate-800 hover:text-emergency-700 border border-slate-200 hover:border-emergency-300 text-xs font-bold transition flex items-center justify-center gap-2 group shadow-xs active:scale-95"
+            >
+              <Flame className="w-4 h-4 text-emergency-500 group-hover:scale-110 transition-transform" />
+              <span>High-Velocity Impact (5.82G)</span>
+            </button>
 
-          {/* Simulation 2: Sudden Deceleration Stop */}
-          <button
-            onClick={() => sentinelEngine.simulateSuddenStop()}
-            className="group text-left p-4 rounded-2xl bg-white hover:bg-amber-50/50 border border-slate-200 hover:border-amber-300 shadow-sm hover:shadow-md transition-all duration-200 active:scale-95 space-y-2"
-          >
-            <div className="flex items-center justify-between">
-              <span className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xs group-hover:scale-110 transition">
-                🛑
-              </span>
-              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 transition" />
-            </div>
-            <div>
-              <h4 className="text-xs font-black text-slate-900 group-hover:text-amber-700 transition">
-                Sudden Deceleration
-              </h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Simulates a <strong>65 → 0 km/h</strong> hard crash stop.
-              </p>
-            </div>
-          </button>
+            <button
+              onClick={() => sentinelEngine.simulateSuddenStop()}
+              className="px-4 py-3 rounded-2xl bg-white hover:bg-amber-50 text-slate-800 hover:text-amber-700 border border-slate-200 hover:border-amber-300 text-xs font-bold transition flex items-center justify-center gap-2 group shadow-xs active:scale-95"
+            >
+              <AlertOctagon className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+              <span>Sudden Deceleration Drop</span>
+            </button>
 
-          {/* Simulation 3: Vehicle Rollover */}
-          <button
-            onClick={() => sentinelEngine.simulateRollover()}
-            className="group text-left p-4 rounded-2xl bg-white hover:bg-purple-50/50 border border-slate-200 hover:border-purple-300 shadow-sm hover:shadow-md transition-all duration-200 active:scale-95 space-y-2"
-          >
-            <div className="flex items-center justify-between">
-              <span className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs group-hover:scale-110 transition">
-                🔄
-              </span>
-              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 transition" />
-            </div>
-            <div>
-              <h4 className="text-xs font-black text-slate-900 group-hover:text-purple-700 transition">
-                Vehicle Rollover
-              </h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Simulates a <strong>94°</strong> tilt angle vehicle inversion.
-              </p>
-            </div>
-          </button>
+            <button
+              onClick={() => sentinelEngine.simulateRollover()}
+              className="px-4 py-3 rounded-2xl bg-white hover:bg-purple-50 text-slate-800 hover:text-purple-700 border border-slate-200 hover:border-purple-300 text-xs font-bold transition flex items-center justify-center gap-2 group shadow-xs active:scale-95"
+            >
+              <Compass className="w-4 h-4 text-purple-500 group-hover:scale-110 transition-transform" />
+              <span>Vehicle Rollover (92° Tilt)</span>
+            </button>
 
-          {/* Simulation 4: Dead-Man Fall Switch */}
-          <button
-            onClick={() => sentinelEngine.simulateImpact(4.65)}
-            className="group text-left p-4 rounded-2xl bg-white hover:bg-teal-50/50 border border-slate-200 hover:border-teal-300 shadow-sm hover:shadow-md transition-all duration-200 active:scale-95 space-y-2"
-          >
-            <div className="flex items-center justify-between">
-              <span className="w-8 h-8 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-xs group-hover:scale-110 transition">
-                🚨
-              </span>
-              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-teal-700 transition" />
-            </div>
-            <div>
-              <h4 className="text-xs font-black text-slate-900 group-hover:text-teal-800 transition">
-                Unresponsive Impact
-              </h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Simulates <strong>4.65G</strong> shock with unconscious driver.
-              </p>
-            </div>
-          </button>
-
+          </div>
         </div>
 
       </div>
